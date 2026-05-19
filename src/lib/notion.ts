@@ -1,47 +1,63 @@
 import { Client, isFullPage } from "@notionhq/client";
 import type {
   PageObjectResponse,
+  QueryDataSourceParameters,
   UpdatePageParameters,
 } from "@notionhq/client/build/src/api-endpoints";
-import { STATUS_LABELS } from "@/types/wbs";
-import type {
-  PhaseMeta,
-  ProjectMeta,
-  TaskKind,
-  TaskStatus,
-  WbsTask,
-} from "@/types/wbs";
+import type { PhaseMeta, ProjectMeta, TaskStatus, WbsTask } from "@/types/wbs";
 
 /**
- * Notion property name mapping. Adjust if the team's n8n bot uses different
- * names — these must match the actual Notion database columns.
+ * Notion property name mapping for the shared engineer task DB.
+ * Adjust to match the actual column names of NOTION_TASKS_DB_ID.
  */
 const NOTION_PROPS = {
-  title: "タイトル",
-  status: "ステータス",
-  assignee: "担当",
-  start: "開始日",
-  end: "終了日",
+  title: "名前",
+  status: "開発ステータス",
+  assignee: "担当者",
+  schedule: "スケジュール",
   progress: "進捗率",
-  phase: "Phase",
   project: "プロジェクト",
-  kind: "種別",
 } as const;
 
 const STATUS_BY_LABEL: Record<string, TaskStatus> = {
   完了: "done",
+  Done: "done",
   進行中: "inProgress",
+  着手中: "inProgress",
+  実装中: "inProgress",
+  レビュー中: "inProgress",
+  "In progress": "inProgress",
+  設計中: "planned",
+  未着手: "planned",
+  予定: "planned",
+  "Not started": "planned",
   FB待ち: "waiting",
   待ち: "waiting",
-  予定: "planned",
+  ブロック中: "waiting",
+  Blocked: "waiting",
   新規: "new",
 };
 
-const KIND_BY_LABEL: Record<string, TaskKind> = {
-  task: "task",
-  milestone: "milestone",
-  タスク: "task",
-  マイルストーン: "milestone",
+/**
+ * Status values written back to Notion. Must exist as options in
+ * the "開発ステータス" status column, otherwise the update will fail.
+ */
+const STATUS_WRITE_LABEL: Record<TaskStatus, string> = {
+  done: "完了",
+  inProgress: "進行中",
+  waiting: "未着手",
+  planned: "未着手",
+  new: "未着手",
+};
+
+/**
+ * Optional translation from the raw Notion user name (returned by the
+ * "担当者" people property) to the short alias used in the UI.
+ * Populate this once the actual Notion user names are known.
+ */
+const ASSIGNEE_ALIAS: Record<string, string> = {
+  // "Makoto Oba": "VJ",
+  // "Engineer A": "EA",
 };
 
 export class NotionNotConfiguredError extends Error {
@@ -86,9 +102,20 @@ async function resolveDataSourceId(notion: Client): Promise<string> {
     cachedDataSourceId = db.data_sources[0].id;
     return cachedDataSourceId;
   }
-  // Legacy fallback: treat the configured ID as a data source id directly.
   cachedDataSourceId = id;
   return cachedDataSourceId;
+}
+
+function buildProjectFilter(
+  project: ProjectMeta,
+): QueryDataSourceParameters["filter"] {
+  const names = project.notionProjectNames ?? [project.name];
+  return {
+    or: names.map((name) => ({
+      property: NOTION_PROPS.project,
+      select: { equals: name },
+    })),
+  };
 }
 
 export async function fetchTasksFromNotion(
@@ -102,10 +129,7 @@ export async function fetchTasksFromNotion(
   do {
     const response = await notion.dataSources.query({
       data_source_id: dataSourceId,
-      filter: {
-        property: NOTION_PROPS.project,
-        select: { equals: project.slug },
-      },
+      filter: buildProjectFilter(project),
       start_cursor: cursor,
     });
     for (const page of response.results) {
@@ -143,26 +167,31 @@ export async function updateTaskInNotion(
 
   if (update.status !== undefined) {
     properties[NOTION_PROPS.status] = {
-      select: { name: STATUS_LABELS[update.status] },
+      status: { name: STATUS_WRITE_LABEL[update.status] },
     };
   }
-  if (update.assignee !== undefined) {
-    properties[NOTION_PROPS.assignee] = {
-      select: { name: update.assignee },
+
+  // 担当者 (people) updates need Notion user IDs, not names, so skip writing
+  // here. Users must reassign manually in Notion.
+
+  if (update.start !== undefined && update.end !== undefined) {
+    properties[NOTION_PROPS.schedule] = {
+      date: {
+        start: toISODateOnly(update.start),
+        end: toISODateOnly(update.end),
+      },
     };
-  }
-  if (update.start !== undefined) {
-    properties[NOTION_PROPS.start] = {
+  } else if (update.start !== undefined) {
+    properties[NOTION_PROPS.schedule] = {
       date: { start: toISODateOnly(update.start) },
     };
   }
-  if (update.end !== undefined) {
-    properties[NOTION_PROPS.end] = {
-      date: { start: toISODateOnly(update.end) },
-    };
-  }
+
   if (update.progress !== undefined) {
-    properties[NOTION_PROPS.progress] = { number: update.progress };
+    // Notion percent-formatted number stores 0-1, not 0-100.
+    properties[NOTION_PROPS.progress] = {
+      number: update.progress / 100,
+    };
   }
 
   await notion.pages.update({ page_id: pageId, properties });
@@ -177,58 +206,37 @@ function mapPageToTask(
     return null;
   }
 
-  const start = readDate(page, NOTION_PROPS.start);
-  const end = readDate(page, NOTION_PROPS.end) ?? start;
-  if (!start || !end) {
+  const range = readDateRange(page, NOTION_PROPS.schedule);
+  if (!range) {
     return null;
   }
 
-  const statusLabel = readSelect(page, NOTION_PROPS.status);
+  const statusLabel = readStatus(page, NOTION_PROPS.status);
   const status: TaskStatus =
     statusLabel && statusLabel in STATUS_BY_LABEL
       ? STATUS_BY_LABEL[statusLabel]
       : "planned";
 
-  const kindLabel = readSelect(page, NOTION_PROPS.kind);
-  const kind: TaskKind =
-    kindLabel && kindLabel in KIND_BY_LABEL ? KIND_BY_LABEL[kindLabel] : "task";
+  const rawAssignee = readPeople(page, NOTION_PROPS.assignee);
+  const assignee =
+    rawAssignee && rawAssignee in ASSIGNEE_ALIAS
+      ? ASSIGNEE_ALIAS[rawAssignee]
+      : rawAssignee;
 
-  const phaseLabel = readSelect(page, NOTION_PROPS.phase) ?? "";
-  const phase = resolvePhaseId(phaseLabel, phases);
+  const progressRaw = readNumber(page, NOTION_PROPS.progress) ?? 0;
+  const progress = Math.round(progressRaw * 100);
 
   return {
     id: page.id,
     name,
-    kind,
-    start,
-    end,
+    kind: "task",
+    start: range.start,
+    end: range.end,
     status,
-    assignee: readAssignee(page, NOTION_PROPS.assignee),
-    phase,
-    progress: readNumber(page, NOTION_PROPS.progress) ?? 0,
+    assignee,
+    phase: phases[0]?.id ?? "phase1",
+    progress,
   };
-}
-
-function resolvePhaseId(notionValue: string, phases: PhaseMeta[]): string {
-  if (!notionValue) {
-    return phases[0]?.id ?? "phase1";
-  }
-  const exact = phases.find((p) => p.label === notionValue);
-  if (exact) {
-    return exact.id;
-  }
-  const idMatch = phases.find((p) => p.id === notionValue);
-  if (idMatch) {
-    return idMatch.id;
-  }
-  const m = notionValue.match(/Phase\s*(\d+)/i);
-  if (m) {
-    const idx = Number.parseInt(m[1], 10) - 1;
-    if (phases[idx]) {
-      return phases[idx].id;
-    }
-  }
-  return phases[0]?.id ?? "phase1";
 }
 
 function readTitle(page: PageObjectResponse, prop: string): string {
@@ -239,23 +247,28 @@ function readTitle(page: PageObjectResponse, prop: string): string {
   return "";
 }
 
-function readSelect(page: PageObjectResponse, prop: string): string | null {
+function readStatus(page: PageObjectResponse, prop: string): string | null {
   const p = page.properties[prop];
-  if (p && p.type === "select") {
-    return p.select?.name ?? null;
-  }
   if (p && p.type === "status") {
     return p.status?.name ?? null;
+  }
+  if (p && p.type === "select") {
+    return p.select?.name ?? null;
   }
   return null;
 }
 
-function readDate(page: PageObjectResponse, prop: string): Date | null {
+function readDateRange(
+  page: PageObjectResponse,
+  prop: string,
+): { start: Date; end: Date } | null {
   const p = page.properties[prop];
-  if (p && p.type === "date" && p.date?.start) {
-    return parseISODateOnly(p.date.start);
+  if (!p || p.type !== "date" || !p.date?.start) {
+    return null;
   }
-  return null;
+  const start = parseISODateOnly(p.date.start);
+  const end = p.date.end ? parseISODateOnly(p.date.end) : start;
+  return { start, end };
 }
 
 function readNumber(page: PageObjectResponse, prop: string): number | null {
@@ -266,24 +279,15 @@ function readNumber(page: PageObjectResponse, prop: string): number | null {
   return null;
 }
 
-function readAssignee(page: PageObjectResponse, prop: string): string {
+function readPeople(page: PageObjectResponse, prop: string): string {
   const p = page.properties[prop];
-  if (!p) {
+  if (!p || p.type !== "people") {
     return "";
   }
-  if (p.type === "select") {
-    return p.select?.name ?? "";
-  }
-  if (p.type === "rich_text") {
-    return p.rich_text.map((t) => t.plain_text).join("");
-  }
-  if (p.type === "people") {
-    return p.people
-      .map((person) => ("name" in person ? (person.name ?? "") : ""))
-      .filter(Boolean)
-      .join(", ");
-  }
-  return "";
+  return p.people
+    .map((person) => ("name" in person ? (person.name ?? "") : ""))
+    .filter(Boolean)
+    .join(", ");
 }
 
 function parseISODateOnly(iso: string): Date {

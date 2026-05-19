@@ -27,8 +27,13 @@ export async function fetchProjectTasks(
     return { tasks: getTasksBySlug(slug), source: "fallback" };
   }
   try {
-    const tasks = await fetchTasksFromNotion(project);
-    return { tasks, source: "notion" };
+    const notionTasks = await fetchTasksFromNotion(project);
+    // The Notion DB has no "種別" column, so all rows are kind=task. Merge in
+    // any milestones from the hardcoded fallback so they stay visible.
+    const milestones = getTasksBySlug(slug).filter(
+      (t) => t.kind === "milestone",
+    );
+    return { tasks: [...notionTasks, ...milestones], source: "notion" };
   } catch (err) {
     if (!(err instanceof NotionNotConfiguredError)) {
       console.error(`[taskService] Notion fetch failed for ${slug}:`, err);

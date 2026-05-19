@@ -25,6 +25,11 @@ export interface ProjectMeta {
   name: string;
   description: string;
   phases: PhaseMeta[];
+  /**
+   * Values that should match the Notion "プロジェクト" select property.
+   * If omitted, falls back to `[name]`.
+   */
+  notionProjectNames?: string[];
 }
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {

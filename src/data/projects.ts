@@ -24,12 +24,14 @@ export const PROJECTS: ProjectMeta[] = [
     name: "Enlight Academy",
     description: "スピリチュアルサロン FAQチャットボット構築",
     phases: EA_PHASES,
+    notionProjectNames: ["EA", "Enlight Academy"],
   },
   {
     slug: "dit",
     name: "DIT",
     description: "AI Server構築プロジェクト",
     phases: DIT_PHASES,
+    notionProjectNames: ["DIT"],
   },
 ];
 
