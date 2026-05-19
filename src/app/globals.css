@@ -4,24 +4,42 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --foreground: #1c1c1e;
+  --secondary-bg: #f2f2f7;
+  --secondary-text: #8e8e93;
+  --separator: #e5e5ea;
+  --apple-blue: #007aff;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue",
+    "Hiragino Sans", "Noto Sans JP", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* gantt-task-react overrides for an Apple-style look */
+.gantt {
+  font-family: inherit;
+}
+
+.gantt-wrapper {
+  background: #ffffff;
+}
+
+/* Neutralize the library's tooltip wrapper so our TooltipContent fully owns
+   the visual. The hashed class is stable for the pinned 5.x version. */
+.gantt-wrapper ._3T42e {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
 }
