@@ -16,7 +16,7 @@ interface GanttChartProps {
   tasks: WbsTask[];
   phases: PhaseMeta[];
   zoom: ZoomMode;
-  canEdit: boolean;
+  readOnly: boolean;
   onTaskClick: (task: WbsTask) => void;
   onDateChange: (id: string, start: Date, end: Date) => void;
 }
@@ -41,7 +41,7 @@ export function GanttChart({
   tasks,
   phases,
   zoom,
-  canEdit,
+  readOnly,
   onTaskClick,
   onDateChange,
 }: GanttChartProps) {
@@ -91,7 +91,7 @@ export function GanttChart({
         progress: avgProgress,
         type: "project",
         hideChildren: false,
-        isDisabled: !canEdit,
+        isDisabled: readOnly,
         styles: {
           backgroundColor: "#F2F2F7",
           backgroundSelectedColor: "#E5E5EA",
@@ -112,7 +112,7 @@ export function GanttChart({
             progress: t.progress,
             type: "milestone",
             project: phase.id,
-            isDisabled: !canEdit,
+            isDisabled: readOnly,
             styles: {
               backgroundColor: color.background,
               backgroundSelectedColor: color.progress,
@@ -129,7 +129,7 @@ export function GanttChart({
             progress: t.progress,
             type: "task",
             project: phase.id,
-            isDisabled: !canEdit,
+            isDisabled: readOnly,
             styles: {
               backgroundColor: color.background,
               backgroundSelectedColor: color.background,
@@ -142,7 +142,7 @@ export function GanttChart({
     }
 
     return result;
-  }, [tasks, phases, canEdit]);
+  }, [tasks, phases, readOnly]);
 
   const viewMode = zoom === "week" ? ViewMode.Week : ViewMode.Month;
   const columnWidth = zoom === "week" ? 90 : 240;

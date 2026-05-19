@@ -227,7 +227,7 @@ export function WbsContainer({
           tasks={filteredTasks}
           phases={project.phases}
           zoom={zoom}
-          canEdit={canEdit}
+          readOnly={!canEdit}
           onTaskClick={setSelectedTask}
           onDateChange={handleDateChange}
         />
