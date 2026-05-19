@@ -7,6 +7,7 @@ import { STATUS_PROGRESS_DEFAULT } from "@/lib/statusColors";
 import { getTasksBySlug } from "@/data/tasks";
 import { fromWire, toWire, type WbsTaskWire } from "@/lib/taskWire";
 import { useAutoSave } from "@/lib/useAutoSave";
+import type { Role } from "@/lib/permissions";
 import type { ProjectMeta, WbsTask } from "@/types/wbs";
 import {
   Toolbar,
@@ -17,6 +18,7 @@ import {
 } from "./Toolbar";
 import { TaskModal } from "./TaskModal";
 import { SaveIndicator } from "./SaveIndicator";
+import { HeaderAuth } from "./HeaderAuth";
 
 const GanttChart = dynamic(
   () => import("./GanttChart").then((m) => m.GanttChart),
@@ -27,6 +29,9 @@ type DataSource = "notion" | "fallback" | "loading";
 
 interface WbsContainerProps {
   project: ProjectMeta;
+  canEdit: boolean;
+  authEnabled: boolean;
+  currentUser: { email: string; role: Role | null } | null;
 }
 
 interface TasksResponse {
@@ -34,7 +39,12 @@ interface TasksResponse {
   tasks: WbsTaskWire[];
 }
 
-export function WbsContainer({ project }: WbsContainerProps) {
+export function WbsContainer({
+  project,
+  canEdit,
+  authEnabled,
+  currentUser,
+}: WbsContainerProps) {
   const [tasks, setTasks] = useState<WbsTask[]>(() =>
     getTasksBySlug(project.slug),
   );
@@ -115,6 +125,9 @@ export function WbsContainer({ project }: WbsContainerProps) {
   } = useAutoSave({ onSave: persistBatch });
 
   const handleDateChange = (id: string, start: Date, end: Date) => {
+    if (!canEdit) {
+      return;
+    }
     let next: WbsTask | undefined;
     setTasks((prev) =>
       prev.map((t) => {
@@ -131,6 +144,10 @@ export function WbsContainer({ project }: WbsContainerProps) {
   };
 
   const handleSave = (updated: WbsTask) => {
+    if (!canEdit) {
+      setSelectedTask(null);
+      return;
+    }
     const statusChanged =
       tasks.find((t) => t.id === updated.id)?.status !== updated.status;
     const finalTask: WbsTask = {
@@ -162,12 +179,15 @@ export function WbsContainer({ project }: WbsContainerProps) {
             {project.name} - WBS
           </h1>
           <SourceBadge source={source} />
-          <div className="ml-auto">
-            <SaveIndicator
-              status={saveStatus}
-              pendingCount={pendingCount}
-              onRetry={retrySave}
-            />
+          <div className="ml-auto flex items-center gap-3">
+            {canEdit && (
+              <SaveIndicator
+                status={saveStatus}
+                pendingCount={pendingCount}
+                onRetry={retrySave}
+              />
+            )}
+            <HeaderAuth authEnabled={authEnabled} user={currentUser} />
           </div>
         </div>
         <p className="mt-0.5 text-xs text-[#8E8E93]">{project.description}</p>
@@ -184,6 +204,7 @@ export function WbsContainer({ project }: WbsContainerProps) {
         assignees={assignees}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
+        readOnly={!canEdit}
       />
 
       <StatusLegend />
@@ -193,6 +214,7 @@ export function WbsContainer({ project }: WbsContainerProps) {
           tasks={filteredTasks}
           phases={project.phases}
           zoom={zoom}
+          canEdit={canEdit}
           onTaskClick={setSelectedTask}
           onDateChange={handleDateChange}
         />
@@ -201,6 +223,7 @@ export function WbsContainer({ project }: WbsContainerProps) {
       <TaskModal
         task={selectedTask}
         assignees={assignees}
+        canEdit={canEdit}
         onClose={() => setSelectedTask(null)}
         onSave={handleSave}
       />

@@ -7,6 +7,7 @@ import { STATUS_LABELS, type TaskStatus, type WbsTask } from "@/types/wbs";
 interface TaskModalProps {
   task: WbsTask | null;
   assignees: string[];
+  canEdit: boolean;
   onClose: () => void;
   onSave: (updated: WbsTask) => void;
 }
@@ -22,6 +23,7 @@ const STATUS_KEYS: TaskStatus[] = [
 export function TaskModal({
   task,
   assignees,
+  canEdit,
   onClose,
   onSave,
 }: TaskModalProps) {
@@ -75,8 +77,9 @@ export function TaskModal({
           <Field label="ステータス">
             <select
               value={status}
+              disabled={!canEdit}
               onChange={(e) => setStatus(e.target.value as TaskStatus)}
-              className="w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-sm text-[#1C1C1E] transition focus:border-[#007AFF] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+              className="w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-sm text-[#1C1C1E] transition focus:border-[#007AFF] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 disabled:cursor-not-allowed disabled:bg-[#F2F2F7] disabled:text-[#8E8E93]"
             >
               {STATUS_KEYS.map((s) => (
                 <option key={s} value={s}>
@@ -89,8 +92,9 @@ export function TaskModal({
           <Field label="担当">
             <select
               value={assignee}
+              disabled={!canEdit}
               onChange={(e) => setAssignee(e.target.value)}
-              className="w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-sm text-[#1C1C1E] transition focus:border-[#007AFF] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+              className="w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-sm text-[#1C1C1E] transition focus:border-[#007AFF] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 disabled:cursor-not-allowed disabled:bg-[#F2F2F7] disabled:text-[#8E8E93]"
             >
               {Array.from(new Set([assignee, ...assignees])).map((a) => (
                 <option key={a} value={a}>
@@ -107,8 +111,9 @@ export function TaskModal({
               max={100}
               step={5}
               value={progress}
+              disabled={!canEdit}
               onChange={(e) => setProgress(Number(e.target.value))}
-              className="w-full accent-[#007AFF]"
+              className="w-full accent-[#007AFF] disabled:cursor-not-allowed"
             />
           </Field>
 
@@ -124,15 +129,17 @@ export function TaskModal({
             onClick={onClose}
             className="rounded-lg border border-[#E5E5EA] bg-white px-4 py-1.5 text-sm font-medium text-[#1C1C1E] transition hover:bg-[#F2F2F7]"
           >
-            キャンセル
+            {canEdit ? "キャンセル" : "閉じる"}
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="rounded-lg bg-[#007AFF] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0051D5]"
-          >
-            保存
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded-lg bg-[#007AFF] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0051D5]"
+            >
+              保存
+            </button>
+          )}
         </div>
       </div>
     </div>

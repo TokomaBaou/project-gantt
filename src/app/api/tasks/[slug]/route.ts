@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProject } from "@/data/projects";
+import { canEditProject, getUserContext } from "@/lib/auth-helpers";
 import { applyTaskUpdate, fetchProjectTasks } from "@/lib/taskService";
 import { fromWire, toWire, type WbsTaskWire } from "@/lib/taskWire";
 
@@ -27,6 +28,13 @@ export async function PUT(request: Request, { params }: RouteContext) {
   const project = getProject(params.slug);
   if (!project) {
     return NextResponse.json({ error: "project not found" }, { status: 404 });
+  }
+  const ctx = await getUserContext();
+  if (!canEditProject(ctx, params.slug)) {
+    return NextResponse.json(
+      { error: "forbidden", reason: "edit permission required" },
+      { status: 401 },
+    );
   }
   let body: PutBody;
   try {

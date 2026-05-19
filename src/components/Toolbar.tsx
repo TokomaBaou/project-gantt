@@ -18,6 +18,7 @@ interface ToolbarProps {
   assignees: string[];
   statusFilter: StatusFilter;
   onStatusFilterChange: (value: StatusFilter) => void;
+  readOnly?: boolean;
 }
 
 const STATUS_KEYS: TaskStatus[] = [
@@ -39,6 +40,7 @@ export function Toolbar({
   assignees,
   statusFilter,
   onStatusFilterChange,
+  readOnly,
 }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-3">
@@ -108,6 +110,13 @@ export function Toolbar({
           </option>
         ))}
       </FilterSelect>
+
+      {readOnly && (
+        <span className="ml-auto flex items-center gap-1.5 rounded-full bg-[#F2F2F7] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#8E8E93]">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#8E8E93]" />
+          閲覧モード
+        </span>
+      )}
     </div>
   );
 }
