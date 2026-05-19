@@ -13,10 +13,14 @@ export async function GET(_request: Request, { params }: RouteContext) {
   if (!project) {
     return NextResponse.json({ error: "project not found" }, { status: 404 });
   }
-  const { tasks, source } = await fetchProjectTasks(params.slug);
+  const { tasks, source, errors, fetchError } = await fetchProjectTasks(
+    params.slug,
+  );
   return NextResponse.json({
     source,
     tasks: tasks.map(toWire),
+    errors,
+    ...(fetchError ? { fetchError } : {}),
   });
 }
 

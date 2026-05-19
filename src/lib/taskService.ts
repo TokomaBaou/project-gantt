@@ -6,6 +6,7 @@ import {
   fetchTasksFromNotion,
   isNotionConfigured,
   updateTaskInNotion,
+  type NotionParseError,
   type NotionUpdate,
 } from "./notion";
 
@@ -14,6 +15,8 @@ export type TaskSource = "notion" | "fallback";
 export interface FetchTasksResult {
   tasks: WbsTask[];
   source: TaskSource;
+  errors: NotionParseError[];
+  fetchError?: string;
 }
 
 export async function fetchProjectTasks(
@@ -21,24 +24,33 @@ export async function fetchProjectTasks(
 ): Promise<FetchTasksResult> {
   const project = getProject(slug);
   if (!project) {
-    return { tasks: [], source: "fallback" };
+    return { tasks: [], source: "fallback", errors: [] };
   }
   if (!isNotionConfigured()) {
-    return { tasks: getTasksBySlug(slug), source: "fallback" };
+    return { tasks: getTasksBySlug(slug), source: "fallback", errors: [] };
   }
   try {
-    const notionTasks = await fetchTasksFromNotion(project);
+    const { tasks: notionTasks, errors } = await fetchTasksFromNotion(project);
     // The Notion DB has no "種別" column, so all rows are kind=task. Merge in
     // any milestones from the hardcoded fallback so they stay visible.
     const milestones = getTasksBySlug(slug).filter(
       (t) => t.kind === "milestone",
     );
-    return { tasks: [...notionTasks, ...milestones], source: "notion" };
+    return {
+      tasks: [...notionTasks, ...milestones],
+      source: "notion",
+      errors,
+    };
   } catch (err) {
     if (!(err instanceof NotionNotConfiguredError)) {
       console.error(`[taskService] Notion fetch failed for ${slug}:`, err);
     }
-    return { tasks: getTasksBySlug(slug), source: "fallback" };
+    return {
+      tasks: getTasksBySlug(slug),
+      source: "fallback",
+      errors: [],
+      fetchError: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 

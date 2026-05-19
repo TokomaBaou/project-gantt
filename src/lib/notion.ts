@@ -118,9 +118,20 @@ function buildProjectFilter(
   };
 }
 
+export interface NotionParseError {
+  id: string;
+  name: string;
+  reason: string;
+}
+
+export interface FetchNotionResult {
+  tasks: WbsTask[];
+  errors: NotionParseError[];
+}
+
 export async function fetchTasksFromNotion(
   project: ProjectMeta,
-): Promise<WbsTask[]> {
+): Promise<FetchNotionResult> {
   const notion = getClient();
   const dataSourceId = await resolveDataSourceId(notion);
   const results: PageObjectResponse[] = [];
@@ -141,13 +152,31 @@ export async function fetchTasksFromNotion(
   } while (cursor);
 
   const tasks: WbsTask[] = [];
+  const errors: NotionParseError[] = [];
+
   for (const page of results) {
-    const task = mapPageToTask(page, project.phases);
-    if (task) {
-      tasks.push(task);
+    let safeName = "";
+    try {
+      safeName = readTitle(page, NOTION_PROPS.title);
+    } catch {
+      // ignore — falls through to error reporting below
+    }
+    try {
+      tasks.push(mapPageToTask(page, project.phases));
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[notion] failed to parse page ${page.id} (${safeName || "(no title)"}): ${reason}`,
+      );
+      errors.push({
+        id: page.id,
+        name: safeName || "(無題)",
+        reason,
+      });
     }
   }
-  return tasks;
+
+  return { tasks, errors };
 }
 
 export interface NotionUpdate {
@@ -197,19 +226,11 @@ export async function updateTaskInNotion(
   await notion.pages.update({ page_id: pageId, properties });
 }
 
-function mapPageToTask(
-  page: PageObjectResponse,
-  phases: PhaseMeta[],
-): WbsTask | null {
-  const name = readTitle(page, NOTION_PROPS.title);
-  if (!name) {
-    return null;
-  }
+function mapPageToTask(page: PageObjectResponse, phases: PhaseMeta[]): WbsTask {
+  const name = readTitle(page, NOTION_PROPS.title) || "(無題)";
 
-  const range = readDateRange(page, NOTION_PROPS.schedule);
-  if (!range) {
-    return null;
-  }
+  const range =
+    readDateRange(page, NOTION_PROPS.schedule) ?? defaultDateRange();
 
   const statusLabel = readStatus(page, NOTION_PROPS.status);
   const status: TaskStatus =
@@ -218,13 +239,17 @@ function mapPageToTask(
       : "planned";
 
   const rawAssignee = readPeople(page, NOTION_PROPS.assignee);
+  const assigneeBase = rawAssignee || "未割当";
   const assignee =
-    rawAssignee && rawAssignee in ASSIGNEE_ALIAS
-      ? ASSIGNEE_ALIAS[rawAssignee]
-      : rawAssignee;
+    assigneeBase in ASSIGNEE_ALIAS
+      ? ASSIGNEE_ALIAS[assigneeBase]
+      : assigneeBase;
 
-  const progressRaw = readNumber(page, NOTION_PROPS.progress) ?? 0;
-  const progress = Math.round(progressRaw * 100);
+  const progressRaw = readNumber(page, NOTION_PROPS.progress);
+  const progress =
+    progressRaw == null || !Number.isFinite(progressRaw)
+      ? 0
+      : Math.round(progressRaw * 100);
 
   return {
     id: page.id,
@@ -237,6 +262,12 @@ function mapPageToTask(
     phase: phases[0]?.id ?? "phase1",
     progress,
   };
+}
+
+function defaultDateRange(): { start: Date; end: Date } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return { start: today, end: today };
 }
 
 function readTitle(page: PageObjectResponse, prop: string): string {
@@ -267,7 +298,10 @@ function readDateRange(
     return null;
   }
   const start = parseISODateOnly(p.date.start);
-  const end = p.date.end ? parseISODateOnly(p.date.end) : start;
+  if (!start) {
+    return null;
+  }
+  const end = p.date.end ? (parseISODateOnly(p.date.end) ?? start) : start;
   return { start, end };
 }
 
@@ -290,9 +324,15 @@ function readPeople(page: PageObjectResponse, prop: string): string {
     .join(", ");
 }
 
-function parseISODateOnly(iso: string): Date {
-  const dateOnly = iso.slice(0, 10);
-  const [y, m, d] = dateOnly.split("-").map(Number);
+function parseISODateOnly(iso: string): Date | null {
+  if (!iso) {
+    return null;
+  }
+  const parts = iso.slice(0, 10).split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return null;
+  }
+  const [y, m, d] = parts;
   return new Date(y, m - 1, d);
 }
 

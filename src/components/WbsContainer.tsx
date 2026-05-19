@@ -37,6 +37,8 @@ interface WbsContainerProps {
 interface TasksResponse {
   source: "notion" | "fallback";
   tasks: WbsTaskWire[];
+  errors?: { id: string; name: string; reason: string }[];
+  fetchError?: string;
 }
 
 export function WbsContainer({
@@ -65,6 +67,17 @@ export function WbsContainer({
         }
         setTasks(data.tasks.map(fromWire));
         setSource(data.source);
+        if (data.fetchError) {
+          console.warn(
+            `[WbsContainer] Notion fetch error for ${project.slug}: ${data.fetchError}`,
+          );
+        }
+        if (data.errors && data.errors.length > 0) {
+          console.warn(
+            `[WbsContainer] ${data.errors.length} Notion task(s) failed to parse for ${project.slug}:`,
+            data.errors,
+          );
+        }
       })
       .catch((err: unknown) => {
         if (aborted) {
