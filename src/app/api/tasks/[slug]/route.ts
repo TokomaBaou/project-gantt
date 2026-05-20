@@ -4,6 +4,9 @@ import { canEditProject, getUserContext } from "@/lib/auth-helpers";
 import { applyTaskUpdate, fetchProjectTasks } from "@/lib/taskService";
 import { fromWire, toWire, type WbsTaskWire } from "@/lib/taskWire";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface RouteContext {
   params: { slug: string };
 }
@@ -19,12 +22,19 @@ export async function GET(request: Request, { params }: RouteContext) {
     params.slug,
     forceSource === "local",
   );
-  return NextResponse.json({
-    source,
-    tasks: tasks.map(toWire),
-    errors,
-    ...(fetchError ? { fetchError } : {}),
-  });
+  return NextResponse.json(
+    {
+      source,
+      tasks: tasks.map(toWire),
+      errors,
+      ...(fetchError ? { fetchError } : {}),
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    },
+  );
 }
 
 interface PutBody {
