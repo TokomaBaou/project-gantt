@@ -21,21 +21,12 @@ const NOTION_PROPS = {
 
 const STATUS_BY_LABEL: Record<string, TaskStatus> = {
   完了: "done",
-  Done: "done",
-  進行中: "inProgress",
-  着手中: "inProgress",
-  実装中: "inProgress",
+  開発中: "inProgress",
+  テスト中: "inProgress",
   レビュー中: "inProgress",
-  "In progress": "inProgress",
   設計中: "planned",
-  未着手: "planned",
-  予定: "planned",
-  "Not started": "planned",
-  FB待ち: "waiting",
-  待ち: "waiting",
-  ブロック中: "waiting",
-  Blocked: "waiting",
-  新規: "new",
+  着手待ち: "planned",
+  ペンディング: "waiting",
 };
 
 /**
@@ -44,10 +35,10 @@ const STATUS_BY_LABEL: Record<string, TaskStatus> = {
  */
 const STATUS_WRITE_LABEL: Record<TaskStatus, string> = {
   done: "完了",
-  inProgress: "進行中",
-  waiting: "未着手",
-  planned: "未着手",
-  new: "未着手",
+  inProgress: "開発中",
+  planned: "着手待ち",
+  waiting: "ペンディング",
+  new: "設計中",
 };
 
 /**
