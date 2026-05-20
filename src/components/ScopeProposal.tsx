@@ -134,11 +134,11 @@ function PatternCard({ pattern: p }: { pattern: Pattern }) {
           >
             {p.label}
           </span>
-          {p.recommended && (
+          {/* {p.recommended && (
             <span className="inline-block rounded-md bg-[#EAF3DE] px-2 py-0.5 text-[11px] font-medium text-[#27500A]">
               ✓ 推奨
             </span>
-          )}
+          )} */}
         </div>
         <h3 className="text-[14px] font-semibold text-[#1C1C1E]">
           {p.title}
