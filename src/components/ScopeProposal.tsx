@@ -25,41 +25,36 @@ const PATTERNS: Pattern[] = [
     id: "a",
     label: "Pattern A",
     title: "2ヶ月以内で収まる範囲",
-    description: "基本機能のみ。早期本番投入を優先",
+    description: "受講前bot＋受講後botの基本機能。早期本番投入を優先",
     accent: "#5DCAA5",
     badgeBg: "#E1F5EE",
     badgeText: "#085041",
     dotColor: "#1D9E75",
     scope: [
-      "スピリチュアル用語 + サロンFAQ + プロンプトでのトーン制御",
-      "悩み相談・報告への自動応答（褒める → 寄り添う → アドバイス → 褒める）",
+      "受講前bot（入会前FAQ・入会前後の判別・LINE組み込み）",
+      "受講後botの基本機能（FAQ・用語辞典・動画取り込み・回答ドラフト・予測提案）",
     ],
     duration: "約2ヶ月",
     barWidths: [{ color: "#1D9E75", width: "55%" }],
-    barLabel: "5月 → 7月中旬",
-    warning:
-      "「内容が薄い」というFBは完全には解消しきれない",
+    barLabel: "5月 → 7月上旬",
   },
   {
     id: "b",
     label: "Pattern B",
-    title: "動画取り込みを含める場合",
-    description: "カリキュラム内容まで回答可能に。品質と期間のバランス",
+    title: "会員サイト連携・運用基盤まで含める場合",
+    description: "会員サイトコンテンツ対応とログ基盤。品質と運用性のバランス",
     accent: "#85B7EB",
     badgeBg: "#E6F1FB",
     badgeText: "#0C447C",
     dotColor: "#378ADD",
     inherited: ["Pattern A の全機能"],
-    scope: [
-      "講座動画600本のトランスクリプト取り込み（選定含め）",
-      "カリキュラムの中身まで回答可能に",
-    ],
+    scope: ["会員サイトコンテンツの取り込み", "ログ基盤の構築・受け入れテスト"],
     duration: "2ヶ月 + 2〜3週間",
     barWidths: [
       { color: "#1D9E75", width: "55%" },
       { color: "#378ADD", width: "15%" },
     ],
-    barLabel: "5月 → 8月上旬",
+    barLabel: "5月 → 7月下旬",
     recommended: true,
   },
   {
@@ -71,11 +66,11 @@ const PATTERNS: Pattern[] = [
     badgeBg: "#FBEAF0",
     badgeText: "#72243E",
     dotColor: "#D4537E",
-    inherited: ["Pattern A の全機能", "Pattern B の動画取り込み"],
+    inherited: ["Pattern A の全機能", "Pattern B の会員サイト連携・運用基盤"],
     scope: [
-      "UTAGEの会話履歴から教師データ100件以上収集",
-      "ファインチューニングで由加先生の人格を再現",
-      "ゴールデンアンサーによる回答品質の安定化",
+      "教師データ100件以上の蓄積",
+      "GPTファインチューニングで由加先生の人格を再現",
+      "メソッド回答精度のチューニング",
     ],
     duration: "3ヶ月以上",
     barWidths: [
@@ -83,7 +78,7 @@ const PATTERNS: Pattern[] = [
       { color: "#378ADD", width: "15%" },
       { color: "#D4537E", width: "18%" },
     ],
-    barLabel: "5月 → 8月末〜",
+    barLabel: "5月 → 8月上旬",
   },
 ];
 
@@ -103,7 +98,7 @@ export function ScopeProposal() {
         >
           ▼
         </span>
-        講座Bot スコープ提案（Pattern A / B / C）
+        スコープ提案（Pattern A / B / C）
       </button>
 
       {open && (
@@ -140,9 +135,7 @@ function PatternCard({ pattern: p }: { pattern: Pattern }) {
             </span>
           )} */}
         </div>
-        <h3 className="text-[14px] font-semibold text-[#1C1C1E]">
-          {p.title}
-        </h3>
+        <h3 className="text-[14px] font-semibold text-[#1C1C1E]">{p.title}</h3>
         <p className="mt-0.5 text-[11px] text-[#8E8E93]">{p.description}</p>
 
         {/* Scope items */}
