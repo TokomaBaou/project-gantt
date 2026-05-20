@@ -51,8 +51,8 @@ const PATTERNS: Pattern[] = [
     dotColor: "#378ADD",
     inherited: ["Pattern A の全機能"],
     scope: [
-      "講座動画8本のトランスクリプト取り込み",
-      "カリキュラムの中身まで回答可能に（FBの「内容が薄い」を解消）",
+      "講座動画600本のトランスクリプト取り込み（選定含め）",
+      "カリキュラムの中身まで回答可能に",
     ],
     duration: "2ヶ月 + 2〜3週間",
     barWidths: [
