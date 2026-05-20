@@ -8,7 +8,15 @@ import { getTasksBySlug } from "@/data/tasks";
 import { fromWire, toWire, type WbsTaskWire } from "@/lib/taskWire";
 import { useAutoSave } from "@/lib/useAutoSave";
 import type { Role } from "@/lib/permissions";
-import type { ProjectMeta, WbsTask } from "@/types/wbs";
+import type { PhaseMeta, ProjectMeta, WbsTask } from "@/types/wbs";
+import {
+  applyOrder,
+  loadPhaseOverrides,
+  moveTaskInArray,
+  saveOrder,
+  savePhaseOverrides,
+  type PhaseOverride,
+} from "@/lib/wbsLayout";
 import {
   Toolbar,
   type AssigneeFilter,
@@ -58,6 +66,7 @@ export function WbsContainer({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [selectedTask, setSelectedTask] = useState<WbsTask | null>(null);
+  const [phases, setPhases] = useState<PhaseMeta[]>(project.phases);
 
   useEffect(() => {
     let aborted = false;
@@ -67,7 +76,7 @@ export function WbsContainer({
         if (aborted) {
           return;
         }
-        setTasks(data.tasks.map(fromWire));
+        setTasks(applyOrder(project.slug, data.tasks.map(fromWire)));
         setSource(data.source);
         if (data.fetchError) {
           console.warn(
@@ -92,6 +101,22 @@ export function WbsContainer({
       aborted = true;
     };
   }, [project.slug]);
+
+  useEffect(() => {
+    setTasks((prev) => applyOrder(project.slug, prev));
+  }, [project.slug]);
+
+  useEffect(() => {
+    const overrides = loadPhaseOverrides(project.slug);
+    if (Object.keys(overrides).length === 0) {
+      return;
+    }
+    setPhases(
+      project.phases.map((p) =>
+        overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
+      ),
+    );
+  }, [project.slug, project.phases]);
 
   const assignees = useMemo(() => {
     const set = new Set<string>();
@@ -163,7 +188,7 @@ export function WbsContainer({
     }
 
     // Check if it's a phase (epic) drag — shift all children by the delta
-    const isPhase = project.phases.some((p) => p.id === id);
+    const isPhase = phases.some((p) => p.id === id);
     if (isPhase) {
       const children = tasks.filter((t) => t.phase === id);
       if (children.length === 0) return;
@@ -242,6 +267,55 @@ export function WbsContainer({
     queueChange(finalTask);
   };
 
+  const handleMoveTask = useCallback(
+    (taskId: string, direction: "up" | "down") => {
+      if (!canEdit) {
+        return;
+      }
+      const next = moveTaskInArray(tasks, taskId, direction);
+      if (next === tasks) {
+        return;
+      }
+      setTasks(next);
+      saveOrder(
+        project.slug,
+        next.map((t) => t.id),
+      );
+    },
+    [canEdit, tasks, project.slug],
+  );
+
+  const handlePhaseEdit = useCallback(
+    (phaseId: string, patch: PhaseOverride) => {
+      if (!canEdit) {
+        return;
+      }
+      const next = phases.map((p) =>
+        p.id === phaseId ? { ...p, ...patch } : p,
+      );
+      setPhases(next);
+      const overrides: Record<string, PhaseOverride> = {};
+      next.forEach((p) => {
+        const original = project.phases.find((o) => o.id === p.id);
+        if (!original) {
+          return;
+        }
+        const override: PhaseOverride = {};
+        if (p.label !== original.label) {
+          override.label = p.label;
+        }
+        if ((p.goal ?? "") !== (original.goal ?? "")) {
+          override.goal = p.goal ?? "";
+        }
+        if (Object.keys(override).length > 0) {
+          overrides[p.id] = override;
+        }
+      });
+      savePhaseOverrides(project.slug, overrides);
+    },
+    [canEdit, phases, project.phases, project.slug],
+  );
+
   return (
     <div className="flex h-screen flex-col bg-white">
       <header className="border-b border-[#E5E5EA] bg-white/95 px-6 py-4 backdrop-blur">
@@ -275,7 +349,7 @@ export function WbsContainer({
       <Toolbar
         zoom={zoom}
         onZoomChange={setZoom}
-        phases={project.phases}
+        phases={phases}
         phaseFilter={phaseFilter}
         onPhaseFilterChange={setPhaseFilter}
         assigneeFilter={assigneeFilter}
@@ -294,20 +368,22 @@ export function WbsContainer({
       <main className="flex-1 overflow-auto">
         <GanttChart
           tasks={filteredTasks}
-          phases={project.phases}
+          phases={phases}
           assignees={assignees}
           zoom={zoom}
           readOnly={!canEdit}
           onTaskClick={setSelectedTask}
           onDateChange={handleDateChange}
           onTaskInlineEdit={handleInlineEdit}
+          onMoveTask={handleMoveTask}
+          onPhaseEdit={handlePhaseEdit}
         />
       </main>
 
       <TaskModal
         task={selectedTask}
         assignees={assignees}
-        phases={project.phases}
+        phases={phases}
         canEdit={canEdit}
         onClose={() => setSelectedTask(null)}
         onSave={handleSave}

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState, type FC } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FC,
+} from "react";
 import { Gantt, type Task, ViewMode } from "gantt-task-react";
 import "gantt-task-react/dist/index.css";
 import { STATUS_COLORS } from "@/lib/statusColors";
@@ -21,6 +28,11 @@ interface GanttChartProps {
   onTaskClick: (task: WbsTask) => void;
   onDateChange: (id: string, start: Date, end: Date) => void;
   onTaskInlineEdit: (updated: WbsTask) => void;
+  onMoveTask: (taskId: string, direction: "up" | "down") => void;
+  onPhaseEdit: (
+    phaseId: string,
+    patch: { label?: string; goal?: string },
+  ) => void;
 }
 
 const PHASE_ACCENT_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE"];
@@ -46,8 +58,14 @@ export function GanttChart({
   readOnly,
   onTaskClick,
   onDateChange,
+  onMoveTask,
+  onPhaseEdit,
 }: GanttChartProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [editingPhase, setEditingPhase] = useState<{
+    id: string;
+    field: "label" | "goal";
+  } | null>(null);
 
   const toggleCollapse = useCallback((phaseId: string) => {
     setCollapsed((prev) => {
@@ -199,7 +217,7 @@ export function GanttChart({
     setSelectedTask,
   }) => (
     <div style={{ width: rowWidth }} className="bg-white">
-      {rows.map((row) => {
+      {rows.map((row, rowIndex) => {
         if (row.type === "project") {
           const meta = phases.find((p) => p.id === row.id);
           const accent =
@@ -229,13 +247,81 @@ export function GanttChart({
               >
                 ▼
               </span>
-              <div className="flex flex-col leading-tight">
-                <span className="text-[13px] font-semibold text-[#1C1C1E]">
-                  {meta?.label ?? row.name}
-                </span>
-                {meta?.goal && (
-                  <span className="text-[11px] text-[#8E8E93]">
+              <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                {!readOnly &&
+                editingPhase?.id === row.id &&
+                editingPhase.field === "label" ? (
+                  <InlineEdit
+                    value={meta?.label ?? row.name}
+                    ariaLabel="エピック名"
+                    className="w-full rounded border border-[#007AFF] bg-white px-1 py-0.5 text-[13px] font-semibold text-[#1C1C1E] focus:outline-none"
+                    onCommit={(value) => {
+                      const trimmed = value.trim();
+                      if (trimmed) {
+                        onPhaseEdit(row.id, { label: trimmed });
+                      }
+                      setEditingPhase(null);
+                    }}
+                    onCancel={() => setEditingPhase(null)}
+                  />
+                ) : (
+                  <span
+                    className={`truncate text-[13px] font-semibold text-[#1C1C1E] ${
+                      readOnly
+                        ? ""
+                        : "cursor-text rounded px-0.5 hover:bg-[#E5E5EA]"
+                    }`}
+                    onClick={(e) => {
+                      if (readOnly) {
+                        return;
+                      }
+                      e.stopPropagation();
+                      setEditingPhase({ id: row.id, field: "label" });
+                    }}
+                  >
+                    {meta?.label ?? row.name}
+                  </span>
+                )}
+                {!readOnly &&
+                editingPhase?.id === row.id &&
+                editingPhase.field === "goal" ? (
+                  <InlineEdit
+                    value={meta?.goal ?? ""}
+                    ariaLabel="エピックの目標"
+                    placeholder="目標を入力"
+                    className="mt-0.5 w-full rounded border border-[#007AFF] bg-white px-1 py-0.5 text-[11px] text-[#8E8E93] focus:outline-none"
+                    onCommit={(value) => {
+                      onPhaseEdit(row.id, { goal: value.trim() });
+                      setEditingPhase(null);
+                    }}
+                    onCancel={() => setEditingPhase(null)}
+                  />
+                ) : meta?.goal ? (
+                  <span
+                    className={`truncate text-[11px] text-[#8E8E93] ${
+                      readOnly
+                        ? ""
+                        : "cursor-text rounded px-0.5 hover:bg-[#E5E5EA]"
+                    }`}
+                    onClick={(e) => {
+                      if (readOnly) {
+                        return;
+                      }
+                      e.stopPropagation();
+                      setEditingPhase({ id: row.id, field: "goal" });
+                    }}
+                  >
                     （{meta.goal}）
+                  </span>
+                ) : readOnly ? null : (
+                  <span
+                    className="cursor-text truncate text-[11px] text-[#C7C7CC] hover:text-[#8E8E93]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingPhase({ id: row.id, field: "goal" });
+                    }}
+                  >
+                    ＋ 目標を追加
                   </span>
                 )}
               </div>
@@ -248,6 +334,10 @@ export function GanttChart({
           return null;
         }
         const selected = selectedTaskId === row.id;
+        const prevRow = rows[rowIndex - 1];
+        const nextRow = rows[rowIndex + 1];
+        const isFirstInPhase = !prevRow || prevRow.type === "project";
+        const isLastInPhase = !nextRow || nextRow.type === "project";
         return (
           <div
             key={row.id}
@@ -263,6 +353,36 @@ export function GanttChart({
               }
             }}
           >
+            {!readOnly && (
+              <div className="mr-1.5 flex w-[18px] shrink-0 flex-col items-center justify-center gap-px">
+                {!isFirstInPhase && (
+                  <button
+                    type="button"
+                    aria-label="上に移動"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMoveTask(row.id, "up");
+                    }}
+                    className="flex h-[13px] w-[18px] items-center justify-center rounded text-[10px] leading-none text-[#C7C7CC] transition hover:bg-[#E5E5EA] hover:text-[#1C1C1E]"
+                  >
+                    ↑
+                  </button>
+                )}
+                {!isLastInPhase && (
+                  <button
+                    type="button"
+                    aria-label="下に移動"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMoveTask(row.id, "down");
+                    }}
+                    className="flex h-[13px] w-[18px] items-center justify-center rounded text-[10px] leading-none text-[#C7C7CC] transition hover:bg-[#E5E5EA] hover:text-[#1C1C1E]"
+                  >
+                    ↓
+                  </button>
+                )}
+              </div>
+            )}
             <div className="flex flex-1 items-center gap-2 overflow-hidden text-[13px] text-[#1C1C1E]">
               {wbs.kind === "milestone" && (
                 <span
@@ -374,6 +494,70 @@ export function GanttChart({
         }}
       />
     </div>
+  );
+}
+
+function InlineEdit({
+  value,
+  onCommit,
+  onCancel,
+  className,
+  ariaLabel,
+  placeholder,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  onCancel: () => void;
+  className: string;
+  ariaLabel: string;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const commit = () => {
+    if (doneRef.current) {
+      return;
+    }
+    doneRef.current = true;
+    onCommit(draft);
+  };
+
+  const cancel = () => {
+    if (doneRef.current) {
+      return;
+    }
+    doneRef.current = true;
+    onCancel();
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={draft}
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      className={className}
+      onChange={(e) => setDraft(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancel();
+        }
+      }}
+      onBlur={commit}
+    />
   );
 }
 
