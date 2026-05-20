@@ -13,6 +13,7 @@ import {
   applyOrder,
   loadPhaseOverrides,
   moveTaskInArray,
+  reorderTaskInArray,
   saveOrder,
   savePhaseOverrides,
   type PhaseOverride,
@@ -290,6 +291,24 @@ export function WbsContainer({
     [canEdit, tasks, project.slug],
   );
 
+  const handleReorderTask = useCallback(
+    (draggedId: string, targetId: string, position: "before" | "after") => {
+      if (!canEdit) {
+        return;
+      }
+      const next = reorderTaskInArray(tasks, draggedId, targetId, position);
+      if (next === tasks) {
+        return;
+      }
+      setTasks(next);
+      saveOrder(
+        project.slug,
+        next.map((t) => t.id),
+      );
+    },
+    [canEdit, tasks, project.slug],
+  );
+
   const handlePhaseEdit = useCallback(
     (phaseId: string, patch: PhaseOverride) => {
       if (!canEdit) {
@@ -389,6 +408,7 @@ export function WbsContainer({
           onDateChange={handleDateChange}
           onTaskInlineEdit={handleInlineEdit}
           onMoveTask={handleMoveTask}
+          onReorderTask={handleReorderTask}
           onPhaseEdit={handlePhaseEdit}
         />
       </main>

@@ -43,3 +43,16 @@ body {
   box-shadow: none !important;
   padding: 0 !important;
 }
+
+/* タスクリストのドラッグ&ドロップ並び替え */
+.wbs-dragging {
+  opacity: 0.4;
+}
+
+.wbs-drop-before {
+  box-shadow: inset 0 2px 0 0 var(--apple-blue);
+}
+
+.wbs-drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--apple-blue);
+}

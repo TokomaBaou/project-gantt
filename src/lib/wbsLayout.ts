@@ -17,8 +17,7 @@ export interface PhaseOverride {
 
 function isBrowser(): boolean {
   return (
-    typeof window !== "undefined" &&
-    typeof window.localStorage !== "undefined"
+    typeof window !== "undefined" && typeof window.localStorage !== "undefined"
   );
 }
 
@@ -129,6 +128,40 @@ export function moveTaskInArray(
   next[index] = next[target];
   next[target] = moved;
   return next;
+}
+
+/**
+ * ドラッグ中のタスクを、ドロップ先タスクの直前/直後へ移動した新しい配列を返す。
+ * 別フェーズへの移動・無変更の場合は元の配列をそのまま返す。
+ */
+export function reorderTaskInArray(
+  tasks: WbsTask[],
+  draggedId: string,
+  targetId: string,
+  position: "before" | "after",
+): WbsTask[] {
+  if (draggedId === targetId) {
+    return tasks;
+  }
+  const draggedIndex = tasks.findIndex((task) => task.id === draggedId);
+  const targetIndex = tasks.findIndex((task) => task.id === targetId);
+  if (draggedIndex === -1 || targetIndex === -1) {
+    return tasks;
+  }
+  if (tasks[draggedIndex].phase !== tasks[targetIndex].phase) {
+    return tasks;
+  }
+  const next = tasks.slice();
+  const [moved] = next.splice(draggedIndex, 1);
+  let insertIndex = next.findIndex((task) => task.id === targetId);
+  if (position === "after") {
+    insertIndex += 1;
+  }
+  next.splice(insertIndex, 0, moved);
+  const unchanged =
+    next.length === tasks.length &&
+    next.every((task, i) => task.id === tasks[i].id);
+  return unchanged ? tasks : next;
 }
 
 /** 案件のエピックタイトル上書き設定を読み込む。 */

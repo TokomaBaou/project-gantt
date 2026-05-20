@@ -29,6 +29,11 @@ interface GanttChartProps {
   onDateChange: (id: string, start: Date, end: Date) => void;
   onTaskInlineEdit: (updated: WbsTask) => void;
   onMoveTask: (taskId: string, direction: "up" | "down") => void;
+  onReorderTask: (
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) => void;
   onPhaseEdit: (
     phaseId: string,
     patch: { label?: string; goal?: string },
@@ -62,6 +67,7 @@ export function GanttChart({
   onTaskClick,
   onDateChange,
   onMoveTask,
+  onReorderTask,
   onPhaseEdit,
 }: GanttChartProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -72,14 +78,29 @@ export function GanttChart({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [ganttHeight, setGanttHeight] = useState(0);
 
+  // ドラッグ&ドロップ並び替えの状態。連続発火する dragover で再レンダリングを
+  // 起こさないよう state ではなく ref で保持し、インジケーターは DOM 直接操作で描画する。
+  const draggedIdRef = useRef<string | null>(null);
+  const dropTargetRef = useRef<{
+    el: HTMLElement;
+    position: "before" | "after";
+  } | null>(null);
+
+  const clearDropIndicator = useCallback(() => {
+    const current = dropTargetRef.current;
+    if (current) {
+      current.el.classList.remove("wbs-drop-before", "wbs-drop-after");
+      dropTargetRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     const element = wrapperRef.current;
     if (!element) {
       return;
     }
     const updateHeight = () => {
-      const available =
-        element.clientHeight - HEADER_HEIGHT - HSCROLL_HEIGHT;
+      const available = element.clientHeight - HEADER_HEIGHT - HSCROLL_HEIGHT;
       setGanttHeight(Math.max(available, MIN_GANTT_HEIGHT));
     };
     updateHeight();
@@ -363,15 +384,66 @@ export function GanttChart({
           <div
             key={row.id}
             style={{ height: rowHeight }}
+            draggable={!readOnly}
             className={`flex cursor-pointer items-center border-b border-[#E5E5EA] pl-4 pr-4 transition ${
               selected ? "bg-[#E5F1FF]" : "hover:bg-[#F2F2F7]"
             }`}
             onClick={() => {
               setSelectedTask(row.id);
-              const wbs = wbsById.get(row.id);
-              if (wbs) {
-                onTaskClick(wbs);
+              onTaskClick(wbs);
+            }}
+            onDragStart={(e) => {
+              draggedIdRef.current = row.id;
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", row.id);
+              e.currentTarget.classList.add("wbs-dragging");
+            }}
+            onDragOver={(e) => {
+              const draggedId = draggedIdRef.current;
+              if (!draggedId || draggedId === row.id) {
+                return;
               }
+              const dragged = wbsById.get(draggedId);
+              if (!dragged || dragged.phase !== wbs.phase) {
+                clearDropIndicator();
+                return;
+              }
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              const rect = e.currentTarget.getBoundingClientRect();
+              const position: "before" | "after" =
+                e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+              const current = dropTargetRef.current;
+              if (
+                current &&
+                current.el === e.currentTarget &&
+                current.position === position
+              ) {
+                return;
+              }
+              clearDropIndicator();
+              e.currentTarget.classList.add(
+                position === "before" ? "wbs-drop-before" : "wbs-drop-after",
+              );
+              dropTargetRef.current = {
+                el: e.currentTarget,
+                position,
+              };
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const draggedId = draggedIdRef.current;
+              const current = dropTargetRef.current;
+              clearDropIndicator();
+              draggedIdRef.current = null;
+              if (draggedId && current) {
+                onReorderTask(draggedId, row.id, current.position);
+              }
+            }}
+            onDragEnd={(e) => {
+              e.currentTarget.classList.remove("wbs-dragging");
+              clearDropIndicator();
+              draggedIdRef.current = null;
             }}
           >
             {!readOnly && (
