@@ -15,10 +15,12 @@ import type { ZoomMode } from "./Toolbar";
 interface GanttChartProps {
   tasks: WbsTask[];
   phases: PhaseMeta[];
+  assignees: string[];
   zoom: ZoomMode;
   readOnly: boolean;
   onTaskClick: (task: WbsTask) => void;
   onDateChange: (id: string, start: Date, end: Date) => void;
+  onTaskInlineEdit: (updated: WbsTask) => void;
 }
 
 const PHASE_ACCENT_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE"];
@@ -37,13 +39,23 @@ const ROW_HEIGHT = 40;
 const HEADER_HEIGHT = 50;
 const LIST_WIDTH = "360px";
 
+const STATUS_CYCLE: TaskStatus[] = [
+  "planned",
+  "inProgress",
+  "waiting",
+  "done",
+  "new",
+];
+
 export function GanttChart({
   tasks,
   phases,
+  assignees,
   zoom,
   readOnly,
   onTaskClick,
   onDateChange,
+  onTaskInlineEdit,
 }: GanttChartProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
@@ -218,7 +230,6 @@ export function GanttChart({
               className="flex cursor-pointer items-center border-b border-l-4 border-[#E5E5EA] pl-3 pr-4 transition hover:bg-[#E5E5EA]"
               onClick={() => {
                 toggleCollapse(row.id);
-                onExpanderClick(row);
               }}
             >
               <span
@@ -359,9 +370,7 @@ export function GanttChart({
         TaskListTable={TaskListBody}
         TooltipContent={TooltipBody}
         onDateChange={(task) => {
-          if (task.type === "task" || task.type === "milestone") {
-            onDateChange(task.id, task.start, task.end);
-          }
+          onDateChange(task.id, task.start, task.end);
         }}
         onClick={(task) => {
           if (task.type === "task" || task.type === "milestone") {

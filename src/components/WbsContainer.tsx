@@ -148,6 +148,36 @@ export function WbsContainer({
     if (!canEdit) {
       return;
     }
+
+    // Check if it's a phase (epic) drag — shift all children by the delta
+    const isPhase = project.phases.some((p) => p.id === id);
+    if (isPhase) {
+      const children = tasks.filter((t) => t.phase === id);
+      if (children.length === 0) return;
+      const oldStart = new Date(
+        Math.min(...children.map((t) => t.start.getTime())),
+      );
+      const deltaMs = start.getTime() - oldStart.getTime();
+      if (deltaMs === 0) return;
+      const updated: WbsTask[] = [];
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.phase !== id) return t;
+          const shifted: WbsTask = {
+            ...t,
+            start: new Date(t.start.getTime() + deltaMs),
+            end: new Date(t.end.getTime() + deltaMs),
+          };
+          updated.push(shifted);
+          return shifted;
+        }),
+      );
+      for (const u of updated) {
+        queueChange(u);
+      }
+      return;
+    }
+
     let next: WbsTask | undefined;
     setTasks((prev) =>
       prev.map((t) => {
