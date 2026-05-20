@@ -250,6 +250,16 @@ const SEED: SeedTask[] = [
 
   // ─── EP-3: 講座ボット ──────────────────────────────────────
   {
+    id: "ea-l-dict",
+    name: "スピリチュアル用語辞典ソース取り込み",
+    status: "done",
+    assignee: "VJ",
+    start: [5, 13],
+    end: [5, 19],
+    phase: "ep3",
+    scope: "A",
+  },
+  {
     id: "ea-l0",
     name: "動画RAGパイプライン構築（1本取込済）",
     status: "done",
@@ -260,7 +270,7 @@ const SEED: SeedTask[] = [
   },
   {
     id: "ea-l1",
-    name: "L1: 残り7本の動画トランスクリプト取り込み",
+    name: "L1: 残り動画トランスクリプト取り込み",
     status: "waiting",
     assignee: "VJ",
     start: [5, 19],
@@ -293,6 +303,16 @@ const SEED: SeedTask[] = [
     assignee: "VJ",
     start: [5, 12],
     end: [7, 7],
+    phase: "ep3",
+    scope: "A",
+  },
+  {
+    id: "ea-l-prompt",
+    name: "プロンプトルール調整（褒める→共感→アドバイス）",
+    status: "inProgress",
+    assignee: "VJ",
+    start: [5, 19],
+    end: [6, 6],
     phase: "ep3",
     scope: "A",
   },
