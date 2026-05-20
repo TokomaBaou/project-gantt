@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type FC } from "react";
+import { useCallback, useMemo, useState, type FC } from "react";
 import { Gantt, type Task, ViewMode } from "gantt-task-react";
 import "gantt-task-react/dist/index.css";
 import { STATUS_COLORS } from "@/lib/statusColors";
@@ -45,6 +45,20 @@ export function GanttChart({
   onTaskClick,
   onDateChange,
 }: GanttChartProps) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  const toggleCollapse = useCallback((phaseId: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(phaseId)) {
+        next.delete(phaseId);
+      } else {
+        next.add(phaseId);
+      }
+      return next;
+    });
+  }, []);
+
   const wbsById = useMemo(() => {
     const map = new Map<string, WbsTask>();
     for (const t of tasks) {
@@ -83,6 +97,8 @@ export function GanttChart({
                 taskOnly.length,
             );
 
+      const isCollapsed = collapsed.has(phase.id);
+
       result.push({
         id: phase.id,
         name: phase.label,
@@ -90,7 +106,7 @@ export function GanttChart({
         end: ensureRange(minStart, maxEnd),
         progress: avgProgress,
         type: "project",
-        hideChildren: false,
+        hideChildren: isCollapsed,
         isDisabled: readOnly,
         styles: {
           backgroundColor: "#F2F2F7",
@@ -142,7 +158,7 @@ export function GanttChart({
     }
 
     return result;
-  }, [tasks, phases, readOnly]);
+  }, [tasks, phases, readOnly, collapsed]);
 
   const viewMode = zoom === "week" ? ViewMode.Week : ViewMode.Month;
   const columnWidth = zoom === "week" ? 90 : 240;
@@ -189,6 +205,7 @@ export function GanttChart({
             PHASE_ACCENT_COLORS[
               (phaseIndex.get(row.id) ?? 0) % PHASE_ACCENT_COLORS.length
             ];
+          const isCollapsed = collapsed.has(row.id);
           return (
             <div
               key={row.id}
@@ -199,8 +216,19 @@ export function GanttChart({
                 backgroundColor: "#F2F2F7",
               }}
               className="flex cursor-pointer items-center border-b border-l-4 border-[#E5E5EA] pl-3 pr-4 transition hover:bg-[#E5E5EA]"
-              onClick={() => onExpanderClick(row)}
+              onClick={() => {
+                toggleCollapse(row.id);
+                onExpanderClick(row);
+              }}
             >
+              <span
+                className="mr-2 inline-block text-[11px] text-[#8E8E93] transition-transform"
+                style={{
+                  transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                }}
+              >
+                ▼
+              </span>
               <div className="flex flex-col leading-tight">
                 <span className="text-[13px] font-semibold text-[#1C1C1E]">
                   {meta?.label ?? row.name}
@@ -227,7 +255,13 @@ export function GanttChart({
             className={`flex cursor-pointer items-center border-b border-[#E5E5EA] pl-4 pr-4 transition ${
               selected ? "bg-[#E5F1FF]" : "hover:bg-[#F2F2F7]"
             }`}
-            onClick={() => setSelectedTask(row.id)}
+            onClick={() => {
+              setSelectedTask(row.id);
+              const wbs = wbsById.get(row.id);
+              if (wbs) {
+                onTaskClick(wbs);
+              }
+            }}
           >
             <div className="flex flex-1 items-center gap-2 overflow-hidden text-[13px] text-[#1C1C1E]">
               {wbs.kind === "milestone" && (

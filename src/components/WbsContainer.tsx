@@ -243,6 +243,7 @@ export function WbsContainer({
       <TaskModal
         task={selectedTask}
         assignees={assignees}
+        phases={project.phases}
         canEdit={canEdit}
         onClose={() => setSelectedTask(null)}
         onSave={handleSave}
