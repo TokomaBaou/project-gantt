@@ -361,6 +361,9 @@ export function GanttChart({
         onDateChange={(task) => {
           onDateChange(task.id, task.start, task.end);
         }}
+        onExpanderClick={(task) => {
+          toggleCollapse(task.id);
+        }}
         onClick={(task) => {
           if (task.type === "task" || task.type === "milestone") {
             const wbs = tasks.find((t) => t.id === task.id);
