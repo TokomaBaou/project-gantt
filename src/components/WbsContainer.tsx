@@ -36,6 +36,7 @@ const GanttChart = dynamic(
 );
 
 type DataSource = "notion" | "fallback" | "loading";
+type ForceSource = "auto" | "local";
 
 interface WbsContainerProps {
   project: ProjectMeta;
@@ -61,6 +62,7 @@ export function WbsContainer({
     getTasksBySlug(project.slug),
   );
   const [source, setSource] = useState<DataSource>("loading");
+  const [forceSource, setForceSource] = useState<ForceSource>("auto");
   const [zoom, setZoom] = useState<ZoomMode>("week");
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
@@ -71,7 +73,9 @@ export function WbsContainer({
 
   useEffect(() => {
     let aborted = false;
-    fetch(`/api/tasks/${project.slug}`)
+    setSource("loading");
+    const qs = forceSource === "local" ? "?source=local" : "";
+    fetch(`/api/tasks/${project.slug}${qs}`)
       .then((r) => r.json())
       .then((data: TasksResponse) => {
         if (aborted) {
@@ -101,7 +105,7 @@ export function WbsContainer({
     return () => {
       aborted = true;
     };
-  }, [project.slug]);
+  }, [project.slug, forceSource]);
 
   useEffect(() => {
     setTasks((prev) => applyOrder(project.slug, prev));
@@ -332,7 +336,13 @@ export function WbsContainer({
           <h1 className="text-xl font-semibold tracking-tight text-[#1C1C1E]">
             {project.name} - WBS
           </h1>
-          <SourceBadge source={source} />
+          <SourceBadge
+            source={source}
+            forceSource={forceSource}
+            onToggle={() =>
+              setForceSource((prev) => (prev === "auto" ? "local" : "auto"))
+            }
+          />
           <div className="ml-auto flex items-center gap-3">
             {canEdit && (
               <SaveIndicator
@@ -395,7 +405,15 @@ export function WbsContainer({
   );
 }
 
-function SourceBadge({ source }: { source: DataSource }) {
+function SourceBadge({
+  source,
+  forceSource,
+  onToggle,
+}: {
+  source: DataSource;
+  forceSource: ForceSource;
+  onToggle: () => void;
+}) {
   const config: Record<DataSource, { label: string; className: string }> = {
     loading: {
       label: "読み込み中",
@@ -411,12 +429,17 @@ function SourceBadge({ source }: { source: DataSource }) {
     },
   };
   const { label, className } = config[source];
+  const nextLabel = forceSource === "auto" ? "ローカルに切替" : "自動に切替";
   return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${className}`}
+    <button
+      type="button"
+      onClick={onToggle}
+      title={nextLabel}
+      className={`cursor-pointer rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition hover:opacity-70 ${className}`}
     >
       {label}
-    </span>
+      <span className="ml-1 text-[8px] opacity-60">⇄</span>
+    </button>
   );
 }
 

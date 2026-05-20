@@ -42,13 +42,14 @@ function buildHearingMilestones(project: ProjectMeta): WbsTask[] {
 
 export async function fetchProjectTasks(
   slug: string,
+  forceLocal = false,
 ): Promise<FetchTasksResult> {
   const project = getProject(slug);
   if (!project) {
     return { tasks: [], source: "fallback", errors: [] };
   }
   const hearingMilestones = buildHearingMilestones(project);
-  if (!isNotionConfigured()) {
+  if (forceLocal || !isNotionConfigured()) {
     return {
       tasks: [...getTasksBySlug(slug), ...hearingMilestones],
       source: "fallback",

@@ -176,7 +176,25 @@ const SEED: SeedTask[] = [
     phase: "ep1",
   },
 
-  // ─── EP-1: 要確認（会議で先方に確認後起票） ────────────────
+  // ─── EP-1: 会議アクション＋要確認 ─────────────────────────
+  {
+    id: "ea-mtg-01",
+    name: "Kaeru JP+参照リンクからデータ収集",
+    status: "planned",
+    assignee: "VJ",
+    start: [5, 20],
+    end: [5, 26],
+    phase: "ep1",
+  },
+  {
+    id: "ea-mtg-03",
+    name: "LINE実装の詳細調査（UTAGE権限含む）",
+    status: "inProgress",
+    assignee: "VJ",
+    start: [5, 20],
+    end: [5, 30],
+    phase: "ep1",
+  },
   {
     id: "ea-tbd-01",
     name: "会員サイトリンク表示",
@@ -218,6 +236,18 @@ const SEED: SeedTask[] = [
     scope: "A",
   },
 
+  // ─── EP-1: マイルストーン ──────────────────────────────────
+  {
+    id: "ea-m-ep1-release",
+    name: "EP-1 事務QAボット 本番リリース",
+    kind: "milestone",
+    status: "planned",
+    assignee: "VJ",
+    start: [6, 30],
+    end: [6, 30],
+    phase: "ep1",
+  },
+
   // ─── EP-3: 講座ボット ──────────────────────────────────────
   {
     id: "ea-l0",
@@ -227,16 +257,6 @@ const SEED: SeedTask[] = [
     start: [5, 14],
     end: [5, 18],
     phase: "ep3",
-  },
-  {
-    id: "ea-l-transcript",
-    name: "講座動画トランスクリプト取り込み",
-    status: "inProgress",
-    assignee: "VJ",
-    start: [5, 18],
-    end: [6, 9],
-    phase: "ep3",
-    scope: "B",
   },
   {
     id: "ea-l1",
@@ -287,26 +307,25 @@ const SEED: SeedTask[] = [
     scope: "C",
   },
   {
-    id: "ea-p3-ft-data",
-    name: "教師データ 100件以上蓄積",
-    kind: "task",
+    id: "ea-mtg-02",
+    name: "藤本先生の作業レビュー+FB",
     status: "planned",
     assignee: "VJ",
-    start: [7, 1],
-    end: [7, 21],
+    start: [5, 20],
+    end: [5, 23],
     phase: "ep3",
-    scope: "C",
   },
+
+  // ─── EP-3: マイルストーン ──────────────────────────────────
   {
-    id: "ea-p3-ft-exec",
-    name: "GPTファインチューニング実施",
-    kind: "task",
+    id: "ea-m-ep3-v1",
+    name: "EP-3 講座ボット 初版完成",
+    kind: "milestone",
     status: "planned",
     assignee: "VJ",
-    start: [7, 21],
-    end: [8, 4],
+    start: [7, 31],
+    end: [7, 31],
     phase: "ep3",
-    scope: "C",
   },
 
   // ─── EP-2: バックオフィス自動化 ────────────────────────────
@@ -320,56 +339,7 @@ const SEED: SeedTask[] = [
     phase: "ep2",
   },
 
-  // ─── 会議アクション（5/20会議由来） ────────────────────────
-  {
-    id: "ea-mtg-01",
-    name: "Kaeru JP+参照リンクからデータ収集",
-    status: "planned",
-    assignee: "VJ",
-    start: [5, 20],
-    end: [5, 26],
-    phase: "ep1",
-  },
-  {
-    id: "ea-mtg-02",
-    name: "藤本先生の作業レビュー+FB",
-    status: "planned",
-    assignee: "VJ",
-    start: [5, 20],
-    end: [5, 23],
-    phase: "ep3",
-  },
-  {
-    id: "ea-mtg-03",
-    name: "LINE実装の詳細調査（UTAGE権限含む）",
-    status: "inProgress",
-    assignee: "VJ",
-    start: [5, 20],
-    end: [5, 30],
-    phase: "ep1",
-  },
-
-  // ─── マイルストーン ────────────────────────────────────────
-  {
-    id: "ea-m-ep1-release",
-    name: "EP-1 事務QAボット 本番リリース",
-    kind: "milestone",
-    status: "planned",
-    assignee: "VJ",
-    start: [6, 30],
-    end: [6, 30],
-    phase: "ep1",
-  },
-  {
-    id: "ea-m-ep3-v1",
-    name: "EP-3 講座ボット 初版完成",
-    kind: "milestone",
-    status: "planned",
-    assignee: "VJ",
-    start: [7, 31],
-    end: [7, 31],
-    phase: "ep3",
-  },
+  // ─── EP-2: マイルストーン ──────────────────────────────────
   {
     id: "ea-m-ep2-kickoff",
     name: "EP-2 バックオフィス自動化 棚卸し開始",
