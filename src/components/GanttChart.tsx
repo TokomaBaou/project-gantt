@@ -50,6 +50,9 @@ const STATUS_BADGE_CLASSES: Record<TaskStatus, string> = {
 const ROW_HEIGHT = 40;
 const HEADER_HEIGHT = 50;
 const LIST_WIDTH = "360px";
+// gantt-task-react の水平スクロールバー（1.2rem）ぶんの余白。
+const HSCROLL_HEIGHT = 20;
+const MIN_GANTT_HEIGHT = 160;
 
 export function GanttChart({
   tasks,
@@ -66,6 +69,24 @@ export function GanttChart({
     id: string;
     field: "label" | "goal";
   } | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [ganttHeight, setGanttHeight] = useState(0);
+
+  useEffect(() => {
+    const element = wrapperRef.current;
+    if (!element) {
+      return;
+    }
+    const updateHeight = () => {
+      const available =
+        element.clientHeight - HEADER_HEIGHT - HSCROLL_HEIGHT;
+      setGanttHeight(Math.max(available, MIN_GANTT_HEIGHT));
+    };
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const toggleCollapse = useCallback((phaseId: string) => {
     setCollapsed((prev) => {
@@ -446,14 +467,22 @@ export function GanttChart({
 
   if (ganttTasks.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-[#8E8E93]">
-        フィルタ条件に一致するタスクがありません
+      <div
+        ref={wrapperRef}
+        className="gantt-wrapper h-full overflow-auto bg-white"
+      >
+        <div className="flex h-64 items-center justify-center text-sm text-[#8E8E93]">
+          フィルタ条件に一致するタスクがありません
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="gantt-wrapper overflow-auto bg-white">
+    <div
+      ref={wrapperRef}
+      className="gantt-wrapper h-full overflow-auto bg-white"
+    >
       <Gantt
         tasks={ganttTasks}
         viewMode={viewMode}
@@ -461,6 +490,7 @@ export function GanttChart({
         listCellWidth={LIST_WIDTH}
         rowHeight={ROW_HEIGHT}
         headerHeight={HEADER_HEIGHT}
+        ganttHeight={ganttHeight}
         barCornerRadius={4}
         barFill={68}
         handleWidth={6}
