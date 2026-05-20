@@ -4,7 +4,13 @@ import type {
   QueryDataSourceParameters,
   UpdatePageParameters,
 } from "@notionhq/client/build/src/api-endpoints";
-import type { PhaseMeta, ProjectMeta, TaskStatus, WbsTask } from "@/types/wbs";
+import type {
+  PhaseMeta,
+  ProjectMeta,
+  TaskScope,
+  TaskStatus,
+  WbsTask,
+} from "@/types/wbs";
 
 /**
  * Notion property name mapping for the shared engineer task DB.
@@ -17,6 +23,7 @@ const NOTION_PROPS = {
   schedule: "スケジュール",
   progress: "進捗率",
   project: "プロジェクト",
+  scope: "スコープ",
 } as const;
 
 const STATUS_BY_LABEL: Record<string, TaskStatus> = {
@@ -242,6 +249,12 @@ function mapPageToTask(page: PageObjectResponse, phases: PhaseMeta[]): WbsTask {
       ? 0
       : Math.round(progressRaw * 100);
 
+  const scopeRaw = readSelect(page, NOTION_PROPS.scope);
+  const scope: TaskScope | undefined =
+    scopeRaw === "A" || scopeRaw === "B" || scopeRaw === "C"
+      ? scopeRaw
+      : undefined;
+
   return {
     id: page.id,
     name,
@@ -252,6 +265,7 @@ function mapPageToTask(page: PageObjectResponse, phases: PhaseMeta[]): WbsTask {
     assignee,
     phase: phases[0]?.id ?? "phase1",
     progress,
+    scope,
   };
 }
 
@@ -274,6 +288,14 @@ function readStatus(page: PageObjectResponse, prop: string): string | null {
   if (p && p.type === "status") {
     return p.status?.name ?? null;
   }
+  if (p && p.type === "select") {
+    return p.select?.name ?? null;
+  }
+  return null;
+}
+
+function readSelect(page: PageObjectResponse, prop: string): string | null {
+  const p = page.properties[prop];
   if (p && p.type === "select") {
     return p.select?.name ?? null;
   }
