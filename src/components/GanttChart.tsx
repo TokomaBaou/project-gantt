@@ -39,23 +39,13 @@ const ROW_HEIGHT = 40;
 const HEADER_HEIGHT = 50;
 const LIST_WIDTH = "360px";
 
-const STATUS_CYCLE: TaskStatus[] = [
-  "planned",
-  "inProgress",
-  "waiting",
-  "done",
-  "new",
-];
-
 export function GanttChart({
   tasks,
   phases,
-  assignees,
   zoom,
   readOnly,
   onTaskClick,
   onDateChange,
-  onTaskInlineEdit,
 }: GanttChartProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
@@ -207,7 +197,6 @@ export function GanttChart({
     tasks: rows,
     selectedTaskId,
     setSelectedTask,
-    onExpanderClick,
   }) => (
     <div style={{ width: rowWidth }} className="bg-white">
       {rows.map((row) => {

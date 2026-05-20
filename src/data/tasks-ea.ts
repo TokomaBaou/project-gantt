@@ -1,5 +1,5 @@
 import { STATUS_PROGRESS_DEFAULT } from "@/lib/statusColors";
-import type { TaskKind, TaskStatus, WbsTask } from "@/types/wbs";
+import type { TaskKind, TaskScope, TaskStatus, WbsTask } from "@/types/wbs";
 
 const YEAR = 2026;
 
@@ -14,6 +14,7 @@ interface SeedTask {
   start: [number, number];
   end: [number, number];
   phase: string;
+  scope?: TaskScope;
 }
 
 const SEED: SeedTask[] = [
@@ -26,6 +27,7 @@ const SEED: SeedTask[] = [
     start: [5, 5],
     end: [5, 9],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-done-02",
@@ -35,6 +37,7 @@ const SEED: SeedTask[] = [
     start: [5, 8],
     end: [5, 12],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-done-03",
@@ -44,6 +47,7 @@ const SEED: SeedTask[] = [
     start: [5, 12],
     end: [5, 12],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-done-04",
@@ -53,6 +57,7 @@ const SEED: SeedTask[] = [
     start: [5, 12],
     end: [5, 12],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-done-05",
@@ -62,6 +67,7 @@ const SEED: SeedTask[] = [
     start: [5, 12],
     end: [5, 14],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-done-06",
@@ -71,6 +77,7 @@ const SEED: SeedTask[] = [
     start: [5, 9],
     end: [5, 9],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-done-07",
@@ -80,6 +87,7 @@ const SEED: SeedTask[] = [
     start: [5, 13],
     end: [5, 19],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-done-08",
@@ -89,6 +97,7 @@ const SEED: SeedTask[] = [
     start: [5, 14],
     end: [5, 16],
     phase: "ep1",
+    scope: "A",
   },
 
   // ─── EP-1: 事務QAボット ── Q1〜Q8（未完了） ────────────────
@@ -127,6 +136,7 @@ const SEED: SeedTask[] = [
     start: [5, 28],
     end: [5, 30],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-q5",
@@ -145,6 +155,7 @@ const SEED: SeedTask[] = [
     start: [6, 2],
     end: [6, 13],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-q7",
@@ -174,6 +185,7 @@ const SEED: SeedTask[] = [
     start: [5, 26],
     end: [6, 6],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-tbd-02",
@@ -183,6 +195,7 @@ const SEED: SeedTask[] = [
     start: [5, 26],
     end: [6, 9],
     phase: "ep1",
+    scope: "B",
   },
   {
     id: "ea-tbd-03",
@@ -192,6 +205,7 @@ const SEED: SeedTask[] = [
     start: [6, 9],
     end: [6, 20],
     phase: "ep1",
+    scope: "A",
   },
   {
     id: "ea-tbd-04",
@@ -201,6 +215,7 @@ const SEED: SeedTask[] = [
     start: [5, 12],
     end: [5, 30],
     phase: "ep1",
+    scope: "A",
   },
 
   // ─── EP-3: 講座ボット ──────────────────────────────────────
@@ -212,6 +227,16 @@ const SEED: SeedTask[] = [
     start: [5, 14],
     end: [5, 18],
     phase: "ep3",
+  },
+  {
+    id: "ea-l-transcript",
+    name: "講座動画トランスクリプト取り込み",
+    status: "inProgress",
+    assignee: "VJ",
+    start: [5, 18],
+    end: [6, 9],
+    phase: "ep3",
+    scope: "B",
   },
   {
     id: "ea-l1",
@@ -239,6 +264,7 @@ const SEED: SeedTask[] = [
     start: [5, 14],
     end: [6, 2],
     phase: "ep3",
+    scope: "C",
   },
   {
     id: "ea-l4",
@@ -248,6 +274,7 @@ const SEED: SeedTask[] = [
     start: [5, 12],
     end: [7, 7],
     phase: "ep3",
+    scope: "C",
   },
   {
     id: "ea-l5",
@@ -257,6 +284,7 @@ const SEED: SeedTask[] = [
     start: [6, 23],
     end: [7, 7],
     phase: "ep3",
+    scope: "C",
   },
 
   // ─── EP-2: バックオフィス自動化 ────────────────────────────
@@ -342,4 +370,5 @@ export const EA_TASKS: WbsTask[] = SEED.map((s) => ({
   start: d(s.start[0], s.start[1]),
   end: d(s.end[0], s.end[1]),
   progress: STATUS_PROGRESS_DEFAULT[s.status],
+  scope: s.scope,
 }));

@@ -33,6 +33,7 @@ export const PROJECTS: ProjectMeta[] = [
     description: "AI効率化PoC — 事務QAボット・講座ボット・バックオフィス自動化",
     phases: EA_PHASES,
     notionProjectNames: ["Enlight Academy"],
+    hearingStartDate: "2026-04-24",
   },
   {
     slug: "dit",

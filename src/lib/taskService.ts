@@ -1,6 +1,7 @@
 import type { ProjectMeta, WbsTask } from "@/types/wbs";
 import { getTasksBySlug } from "@/data/tasks";
 import { getProject } from "@/data/projects";
+import { isoDateOnlyToDate } from "./taskWire";
 import {
   NotionNotConfiguredError,
   fetchTasksFromNotion,
@@ -19,6 +20,26 @@ export interface FetchTasksResult {
   fetchError?: string;
 }
 
+function buildHearingMilestones(project: ProjectMeta): WbsTask[] {
+  if (!project.hearingStartDate) {
+    return [];
+  }
+  const date = isoDateOnlyToDate(project.hearingStartDate);
+  return [
+    {
+      id: `${project.slug}-hearing-start`,
+      name: "ヒアリング開始",
+      kind: "milestone",
+      start: date,
+      end: date,
+      status: "done",
+      phase: "ep1",
+      assignee: "VJ",
+      progress: 100,
+    },
+  ];
+}
+
 export async function fetchProjectTasks(
   slug: string,
 ): Promise<FetchTasksResult> {
@@ -26,8 +47,13 @@ export async function fetchProjectTasks(
   if (!project) {
     return { tasks: [], source: "fallback", errors: [] };
   }
+  const hearingMilestones = buildHearingMilestones(project);
   if (!isNotionConfigured()) {
-    return { tasks: getTasksBySlug(slug), source: "fallback", errors: [] };
+    return {
+      tasks: [...getTasksBySlug(slug), ...hearingMilestones],
+      source: "fallback",
+      errors: [],
+    };
   }
   try {
     const { tasks: notionTasks, errors } = await fetchTasksFromNotion(project);
@@ -37,7 +63,7 @@ export async function fetchProjectTasks(
       (t) => t.kind === "milestone",
     );
     return {
-      tasks: [...notionTasks, ...milestones],
+      tasks: [...notionTasks, ...milestones, ...hearingMilestones],
       source: "notion",
       errors,
     };
@@ -46,7 +72,7 @@ export async function fetchProjectTasks(
       console.error(`[taskService] Notion fetch failed for ${slug}:`, err);
     }
     return {
-      tasks: getTasksBySlug(slug),
+      tasks: [...getTasksBySlug(slug), ...hearingMilestones],
       source: "fallback",
       errors: [],
       fetchError: err instanceof Error ? err.message : String(err),

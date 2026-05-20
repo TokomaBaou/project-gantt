@@ -1,4 +1,4 @@
-import type { TaskKind, TaskStatus, WbsTask } from "@/types/wbs";
+import type { TaskKind, TaskScope, TaskStatus, WbsTask } from "@/types/wbs";
 
 export interface WbsTaskWire {
   id: string;
@@ -10,6 +10,7 @@ export interface WbsTaskWire {
   assignee: string;
   phase: string;
   progress: number;
+  scope?: TaskScope;
 }
 
 export function toWire(task: WbsTask): WbsTaskWire {
@@ -23,6 +24,7 @@ export function toWire(task: WbsTask): WbsTaskWire {
     assignee: task.assignee,
     phase: task.phase,
     progress: task.progress,
+    scope: task.scope,
   };
 }
 
@@ -37,6 +39,7 @@ export function fromWire(wire: WbsTaskWire): WbsTask {
     assignee: wire.assignee,
     phase: wire.phase,
     progress: wire.progress,
+    scope: wire.scope,
   };
 }
 

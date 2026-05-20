@@ -6,6 +6,7 @@ export type ZoomMode = "week" | "month";
 export type PhaseFilter = "all" | string;
 export type AssigneeFilter = string;
 export type StatusFilter = "all" | "notDone" | TaskStatus;
+export type ScopeFilter = "all" | "A" | "B" | "C";
 
 interface ToolbarProps {
   zoom: ZoomMode;
@@ -18,6 +19,9 @@ interface ToolbarProps {
   assignees: string[];
   statusFilter: StatusFilter;
   onStatusFilterChange: (value: StatusFilter) => void;
+  scopeFilter: ScopeFilter;
+  onScopeFilterChange: (value: ScopeFilter) => void;
+  showScopeFilter?: boolean;
   readOnly?: boolean;
 }
 
@@ -27,6 +31,13 @@ const STATUS_KEYS: TaskStatus[] = [
   "waiting",
   "planned",
   "new",
+];
+
+const SCOPE_OPTIONS: { value: ScopeFilter; label: string; hint: string }[] = [
+  { value: "all", label: "すべて", hint: "" },
+  { value: "A", label: "パターンA", hint: "2ヶ月以内" },
+  { value: "B", label: "パターンB", hint: "2ヶ月+2〜3週間" },
+  { value: "C", label: "パターンC", hint: "3ヶ月以上" },
 ];
 
 export function Toolbar({
@@ -40,8 +51,13 @@ export function Toolbar({
   assignees,
   statusFilter,
   onStatusFilterChange,
+  scopeFilter,
+  onScopeFilterChange,
+  showScopeFilter,
   readOnly,
 }: ToolbarProps) {
+  const scopeHint =
+    SCOPE_OPTIONS.find((o) => o.value === scopeFilter)?.hint ?? "";
   return (
     <div className="flex flex-wrap items-center gap-4 border-b border-[#E5E5EA] bg-white px-6 py-3">
       <div className="flex items-center gap-2">
@@ -111,6 +127,25 @@ export function Toolbar({
           </option>
         ))}
       </FilterSelect>
+
+      {showScopeFilter && (
+        <div className="flex items-center gap-2">
+          <FilterSelect
+            label="スコープ"
+            value={scopeFilter}
+            onChange={(v) => onScopeFilterChange(v as ScopeFilter)}
+          >
+            {SCOPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </FilterSelect>
+          {scopeHint && (
+            <span className="text-xs text-[#C7C7CC]">{scopeHint}</span>
+          )}
+        </div>
+      )}
 
       {readOnly && (
         <span className="ml-auto flex items-center gap-1.5 rounded-full bg-[#F2F2F7] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#8E8E93]">

@@ -13,6 +13,7 @@ import {
   Toolbar,
   type AssigneeFilter,
   type PhaseFilter,
+  type ScopeFilter,
   type StatusFilter,
   type ZoomMode,
 } from "./Toolbar";
@@ -55,6 +56,7 @@ export function WbsContainer({
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [selectedTask, setSelectedTask] = useState<WbsTask | null>(null);
 
   useEffect(() => {
@@ -119,9 +121,20 @@ export function WbsContainer({
       ) {
         return false;
       }
+      if (scopeFilter === "A" && t.scope !== "A" && t.scope !== undefined) {
+        return false;
+      }
+      if (
+        scopeFilter === "B" &&
+        t.scope !== "A" &&
+        t.scope !== "B" &&
+        t.scope !== undefined
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [tasks, phaseFilter, assigneeFilter, statusFilter]);
+  }, [tasks, phaseFilter, assigneeFilter, statusFilter, scopeFilter]);
 
   const persistBatch = useCallback(
     async (batch: WbsTask[]) => {
@@ -270,6 +283,9 @@ export function WbsContainer({
         assignees={assignees}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
+        scopeFilter={scopeFilter}
+        onScopeFilterChange={setScopeFilter}
+        showScopeFilter={project.slug === "ea"}
         readOnly={!canEdit}
       />
 

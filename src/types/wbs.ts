@@ -2,6 +2,8 @@ export type TaskStatus = "done" | "inProgress" | "waiting" | "planned" | "new";
 
 export type TaskKind = "task" | "milestone";
 
+export type TaskScope = "A" | "B" | "C";
+
 export interface PhaseMeta {
   id: string;
   label: string;
@@ -18,6 +20,7 @@ export interface WbsTask {
   assignee: string;
   phase: string;
   progress: number;
+  scope?: TaskScope;
 }
 
 export interface ProjectMeta {
@@ -30,6 +33,11 @@ export interface ProjectMeta {
    * If omitted, falls back to `[name]`.
    */
   notionProjectNames?: string[];
+  /**
+   * ISO date (YYYY-MM-DD) when the project hearing started. When set, a
+   * "ヒアリング開始" milestone is injected for the project.
+   */
+  hearingStartDate?: string;
 }
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
