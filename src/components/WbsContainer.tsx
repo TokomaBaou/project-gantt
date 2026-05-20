@@ -37,7 +37,7 @@ const GanttChart = dynamic(
 );
 
 type DataSource = "notion" | "fallback" | "loading";
-type ForceSource = "auto" | "local";
+type DataMode = "local" | "notion";
 
 interface WbsContainerProps {
   project: ProjectMeta;
@@ -63,7 +63,7 @@ export function WbsContainer({
     getTasksBySlug(project.slug),
   );
   const [source, setSource] = useState<DataSource>("loading");
-  const [forceSource, setForceSource] = useState<ForceSource>("auto");
+  const [dataMode, setDataMode] = useState<DataMode>("local");
   const [zoom, setZoom] = useState<ZoomMode>("week");
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
@@ -75,7 +75,7 @@ export function WbsContainer({
   useEffect(() => {
     let aborted = false;
     setSource("loading");
-    const qs = forceSource === "local" ? "?source=local" : "";
+    const qs = dataMode === "local" ? "?source=local" : "";
     fetch(`/api/tasks/${project.slug}${qs}`)
       .then((r) => r.json())
       .then((data: TasksResponse) => {
@@ -106,7 +106,7 @@ export function WbsContainer({
     return () => {
       aborted = true;
     };
-  }, [project.slug, forceSource]);
+  }, [project.slug, dataMode]);
 
   useEffect(() => {
     setTasks((prev) => applyOrder(project.slug, prev));
@@ -355,12 +355,10 @@ export function WbsContainer({
           <h1 className="text-xl font-semibold tracking-tight text-[#1C1C1E]">
             {project.name} - WBS
           </h1>
-          <SourceBadge
+          <DataSourceToggle
+            mode={dataMode}
             source={source}
-            forceSource={forceSource}
-            onToggle={() =>
-              setForceSource((prev) => (prev === "auto" ? "local" : "auto"))
-            }
+            onChange={setDataMode}
           />
           <div className="ml-auto flex items-center gap-3">
             {canEdit && (
@@ -425,41 +423,56 @@ export function WbsContainer({
   );
 }
 
-function SourceBadge({
+function DataSourceToggle({
+  mode,
   source,
-  forceSource,
-  onToggle,
+  onChange,
 }: {
+  mode: DataMode;
   source: DataSource;
-  forceSource: ForceSource;
-  onToggle: () => void;
+  onChange: (mode: DataMode) => void;
 }) {
-  const config: Record<DataSource, { label: string; className: string }> = {
-    loading: {
-      label: "読み込み中",
-      className: "bg-[#F2F2F7] text-[#8E8E93]",
-    },
-    notion: {
-      label: "Notion",
-      className: "bg-[#E8F9ED] text-[#28A745]",
-    },
-    fallback: {
-      label: "ローカル",
-      className: "bg-[#FFF3E0] text-[#E65100]",
-    },
-  };
-  const { label, className } = config[source];
-  const nextLabel = forceSource === "auto" ? "ローカルに切替" : "自動に切替";
+  const notionFallback = mode === "notion" && source === "fallback";
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      title={nextLabel}
-      className={`cursor-pointer rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition hover:opacity-70 ${className}`}
-    >
-      {label}
-      <span className="ml-1 text-[8px] opacity-60">⇄</span>
-    </button>
+    <div className="flex items-center gap-2">
+      <div className="inline-flex overflow-hidden rounded-lg bg-[#F2F2F7] p-0.5">
+        <button
+          type="button"
+          onClick={() => onChange("local")}
+          title="ローカル定義（コード側のWBS）を表示"
+          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+            mode === "local"
+              ? "bg-white text-[#007AFF] shadow-sm"
+              : "text-[#8E8E93] hover:text-[#1C1C1E]"
+          }`}
+        >
+          ローカル
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("notion")}
+          title="Notion DBと同期したデータを表示"
+          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+            mode === "notion"
+              ? "bg-white text-[#007AFF] shadow-sm"
+              : "text-[#8E8E93] hover:text-[#1C1C1E]"
+          }`}
+        >
+          Notion
+        </button>
+      </div>
+      {source === "loading" && (
+        <span className="text-[10px] text-[#8E8E93]">読み込み中…</span>
+      )}
+      {notionFallback && (
+        <span
+          title="Notionからの取得に失敗したため、ローカルデータを表示しています"
+          className="rounded-full bg-[#FFF3E0] px-2 py-0.5 text-[10px] font-semibold text-[#E65100]"
+        >
+          Notion未取得
+        </span>
+      )}
+    </div>
   );
 }
 

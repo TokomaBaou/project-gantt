@@ -49,7 +49,7 @@ export async function fetchProjectTasks(
     return { tasks: [], source: "fallback", errors: [] };
   }
   const hearingMilestones = buildHearingMilestones(project);
-  if (forceLocal || project.useLocalTasks || !isNotionConfigured()) {
+  if (forceLocal || !isNotionConfigured()) {
     return {
       tasks: [...getTasksBySlug(slug), ...hearingMilestones],
       source: "fallback",
