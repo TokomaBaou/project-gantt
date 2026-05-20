@@ -193,6 +193,22 @@ export function WbsContainer({
     }
   };
 
+  const handleInlineEdit = (updated: WbsTask) => {
+    if (!canEdit) return;
+    const statusChanged =
+      tasks.find((t) => t.id === updated.id)?.status !== updated.status;
+    const finalTask: WbsTask = {
+      ...updated,
+      progress: statusChanged
+        ? STATUS_PROGRESS_DEFAULT[updated.status]
+        : updated.progress,
+    };
+    setTasks((prev) =>
+      prev.map((t) => (t.id === finalTask.id ? finalTask : t)),
+    );
+    queueChange(finalTask);
+  };
+
   const handleSave = (updated: WbsTask) => {
     if (!canEdit) {
       setSelectedTask(null);
@@ -263,10 +279,12 @@ export function WbsContainer({
         <GanttChart
           tasks={filteredTasks}
           phases={project.phases}
+          assignees={assignees}
           zoom={zoom}
           readOnly={!canEdit}
           onTaskClick={setSelectedTask}
           onDateChange={handleDateChange}
+          onTaskInlineEdit={handleInlineEdit}
         />
       </main>
 
