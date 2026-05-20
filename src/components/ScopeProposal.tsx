@@ -75,6 +75,7 @@ const PATTERNS: Pattern[] = [
     scope: [
       "UTAGEの会話履歴から教師データ100件以上収集",
       "ファインチューニングで由加先生の人格を再現",
+      "ゴールデンアンサーによる回答品質の安定化",
     ],
     duration: "3ヶ月以上",
     barWidths: [
