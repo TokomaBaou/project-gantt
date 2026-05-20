@@ -109,7 +109,14 @@ export function WbsContainer({
       if (assigneeFilter !== "all" && t.assignee !== assigneeFilter) {
         return false;
       }
-      if (statusFilter !== "all" && t.status !== statusFilter) {
+      if (statusFilter === "notDone" && t.status === "done") {
+        return false;
+      }
+      if (
+        statusFilter !== "all" &&
+        statusFilter !== "notDone" &&
+        t.status !== statusFilter
+      ) {
         return false;
       }
       return true;

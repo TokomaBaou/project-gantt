@@ -5,7 +5,7 @@ import { STATUS_LABELS, type PhaseMeta, type TaskStatus } from "@/types/wbs";
 export type ZoomMode = "week" | "month";
 export type PhaseFilter = "all" | string;
 export type AssigneeFilter = string;
-export type StatusFilter = "all" | TaskStatus;
+export type StatusFilter = "all" | "notDone" | TaskStatus;
 
 interface ToolbarProps {
   zoom: ZoomMode;
@@ -104,6 +104,7 @@ export function Toolbar({
         onChange={(v) => onStatusFilterChange(v as StatusFilter)}
       >
         <option value="all">すべて</option>
+        <option value="notDone">完了以外</option>
         {STATUS_KEYS.map((s) => (
           <option key={s} value={s}>
             {STATUS_LABELS[s]}
