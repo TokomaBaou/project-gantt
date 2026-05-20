@@ -50,9 +50,6 @@ const STATUS_BADGE_CLASSES: Record<TaskStatus, string> = {
 const ROW_HEIGHT = 40;
 const HEADER_HEIGHT = 50;
 const LIST_WIDTH = "360px";
-// gantt-task-react の水平スクロールバー（1.2rem）ぶんの余白。
-const HSCROLL_HEIGHT = 20;
-const MIN_GANTT_HEIGHT = 160;
 
 export function GanttChart({
   tasks,
@@ -70,22 +67,31 @@ export function GanttChart({
     field: "label" | "goal";
   } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [ganttHeight, setGanttHeight] = useState(0);
 
+  // gantt-task-react は wheel イベントを握り、deltaX が少しでも乗った
+  // スクロール（トラックパッドで頻出）を横スクロール扱いで preventDefault
+  // するため、縦スクロールがチャート内で握り潰される。primarily-vertical な
+  // wheel を capture フェーズで止め、ライブラリに届く前にブラウザ既定の
+  // 縦スクロールへ委ねることで最下部まで到達できるようにする。
   useEffect(() => {
     const element = wrapperRef.current;
     if (!element) {
       return;
     }
-    const updateHeight = () => {
-      const available =
-        element.clientHeight - HEADER_HEIGHT - HSCROLL_HEIGHT;
-      setGanttHeight(Math.max(available, MIN_GANTT_HEIGHT));
+    const onWheelCapture = (event: WheelEvent) => {
+      if (!event.shiftKey && Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
+        event.stopPropagation();
+      }
     };
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-    return () => observer.disconnect();
+    element.addEventListener("wheel", onWheelCapture, {
+      capture: true,
+      passive: true,
+    });
+    return () => {
+      element.removeEventListener("wheel", onWheelCapture, {
+        capture: true,
+      });
+    };
   }, []);
 
   const toggleCollapse = useCallback((phaseId: string) => {
@@ -490,7 +496,6 @@ export function GanttChart({
         listCellWidth={LIST_WIDTH}
         rowHeight={ROW_HEIGHT}
         headerHeight={HEADER_HEIGHT}
-        ganttHeight={ganttHeight}
         barCornerRadius={4}
         barFill={68}
         handleWidth={6}
