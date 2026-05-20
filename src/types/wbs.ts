@@ -43,6 +43,12 @@ export interface ProjectMeta {
    * タイムラインの起点を示す「ヒアリング開始」マイルストーンを表示する。
    */
   hearingStartDate?: string;
+  /**
+   * true の場合、Notion を参照せず常にローカルの tasks-*.ts を
+   * データソースにする。コード側で WBS を再構成し、Notion DB の
+   * タスク構成と乖離している案件向け。
+   */
+  useLocalTasks?: boolean;
 }
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {

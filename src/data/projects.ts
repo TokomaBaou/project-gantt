@@ -39,6 +39,7 @@ export const PROJECTS: ProjectMeta[] = [
     phases: EA_PHASES,
     notionProjectNames: ["Enlight Academy"],
     hearingStartDate: "2026-04-24",
+    useLocalTasks: true,
   },
   {
     slug: "dit",
