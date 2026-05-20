@@ -28,6 +28,7 @@ import {
 import { TaskModal } from "./TaskModal";
 import { SaveIndicator } from "./SaveIndicator";
 import { HeaderAuth } from "./HeaderAuth";
+import { ScopeProposal } from "./ScopeProposal";
 
 const GanttChart = dynamic(
   () => import("./GanttChart").then((m) => m.GanttChart),
@@ -364,6 +365,8 @@ export function WbsContainer({
       />
 
       <StatusLegend />
+
+      {project.slug === "ea" && <ScopeProposal />}
 
       <main className="min-h-0 flex-1 overflow-auto">
         <GanttChart

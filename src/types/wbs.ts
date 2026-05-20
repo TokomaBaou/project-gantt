@@ -2,6 +2,11 @@ export type TaskStatus = "done" | "inProgress" | "waiting" | "planned" | "new";
 
 export type TaskKind = "task" | "milestone";
 
+/**
+ * スコープシナリオの段階。
+ * A: 2ヶ月以内 / B: 2ヶ月+2〜3週間 / C: 3ヶ月以上。
+ * 未設定のタスクはパターンAに含めて扱う。
+ */
 export type TaskScope = "A" | "B" | "C";
 
 export interface PhaseMeta {
@@ -34,8 +39,8 @@ export interface ProjectMeta {
    */
   notionProjectNames?: string[];
   /**
-   * ISO date (YYYY-MM-DD) when the project hearing started. When set, a
-   * "ヒアリング開始" milestone is injected for the project.
+   * ヒアリング開始日（YYYY-MM-DD）。設定すると、ガントチャート上に
+   * タイムラインの起点を示す「ヒアリング開始」マイルストーンを表示する。
    */
   hearingStartDate?: string;
 }
