@@ -389,9 +389,17 @@ function defaultDateRange(): { start: Date; end: Date } {
 }
 
 function readTitle(page: PageObjectResponse, prop: string): string {
-  const p = page.properties[prop];
-  if (p && p.type === "title") {
-    return p.title.map((t) => t.plain_text).join("");
+  const named = page.properties[prop];
+  if (named && named.type === "title") {
+    return named.title.map((t) => t.plain_text).join("");
+  }
+  // フォールバック: DB によって title プロパティ名が異なるため
+  // （例: 「名前」「マイルストーン」など）、type === "title" を最初に検出した
+  // プロパティを採用する。Notion DB に title 型は必ず 1 つ存在する。
+  for (const value of Object.values(page.properties)) {
+    if (value && value.type === "title") {
+      return value.title.map((t) => t.plain_text).join("");
+    }
   }
   return "";
 }
