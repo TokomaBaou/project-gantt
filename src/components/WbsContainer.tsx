@@ -11,12 +11,15 @@ import type { Role } from "@/lib/permissions";
 import type { PhaseMeta, ProjectMeta, WbsTask } from "@/types/wbs";
 import {
   applyOrder,
+  applyPhaseOrder,
   loadDataMode,
   loadPhaseOverrides,
   moveTaskInArray,
+  reorderPhasesInArray,
   reorderTaskInArray,
   saveDataMode,
   saveOrder,
+  savePhaseOrder,
   savePhaseOverrides,
   type PhaseOverride,
 } from "@/lib/wbsLayout";
@@ -93,21 +96,16 @@ export function WbsContainer({
         setSource(data.source);
         // Notion 由来のフェーズ階層が返ってきたらそれを採用する。
         // ローカルフォールバック時は project.phases を維持する。
-        if (data.source === "notion" && data.phases && data.phases.length > 0) {
-          const overrides = loadPhaseOverrides(project.slug);
-          setPhases(
-            data.phases.map((p) =>
-              overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
-            ),
-          );
-        } else {
-          const overrides = loadPhaseOverrides(project.slug);
-          setPhases(
-            project.phases.map((p) =>
-              overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
-            ),
-          );
-        }
+        const basePhases =
+          data.source === "notion" && data.phases && data.phases.length > 0
+            ? data.phases
+            : project.phases;
+        const overrides = loadPhaseOverrides(project.slug);
+        const withOverrides = basePhases.map((p) =>
+          overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
+        );
+        // 保存済みのフェーズ並び順を適用（未登録フェーズは元の順で末尾へ）。
+        setPhases(applyPhaseOrder(project.slug, withOverrides));
         if (data.fetchError) {
           console.warn(
             `[WbsContainer] Notion fetch error for ${project.slug}: ${data.fetchError}`,
@@ -380,6 +378,24 @@ export function WbsContainer({
     [canEdit, phases, project.phases, project.slug],
   );
 
+  const handleReorderPhases = useCallback(
+    (draggedId: string, targetId: string, position: "before" | "after") => {
+      if (!canEdit) {
+        return;
+      }
+      const next = reorderPhasesInArray(phases, draggedId, targetId, position);
+      if (next === phases) {
+        return;
+      }
+      setPhases(next);
+      savePhaseOrder(
+        project.slug,
+        next.map((p) => p.id),
+      );
+    },
+    [canEdit, phases, project.slug],
+  );
+
   return (
     <div className="flex h-screen flex-col bg-white">
       <header className="border-b border-[#E5E5EA] bg-white/95 px-6 py-4 backdrop-blur">
@@ -451,6 +467,7 @@ export function WbsContainer({
           onMoveTask={handleMoveTask}
           onReorderTask={handleReorderTask}
           onPhaseEdit={handlePhaseEdit}
+          onReorderPhases={handleReorderPhases}
         />
       </main>
 

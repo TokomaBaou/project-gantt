@@ -37,6 +37,11 @@ interface GanttChartProps {
     phaseId: string,
     patch: { label?: string; goal?: string },
   ) => void;
+  onReorderPhases?: (
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) => void;
 }
 
 const LIST_WIDTH = 380;
@@ -352,6 +357,7 @@ export function GanttChart({
   readOnly,
   onTaskClick,
   onPhaseEdit,
+  onReorderPhases,
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -360,6 +366,21 @@ export function GanttChart({
     field: "label" | "goal";
   } | null>(null);
   const [dayPxOverride, setDayPxOverride] = useState<number | null>(null);
+
+  // フェーズの DnD 並び替え用 ref。連続発火する dragover で再レンダリングを
+  // 起こさないよう state ではなく ref で保持し、インジケーターは DOM 直接操作で描画する。
+  const draggedPhaseIdRef = useRef<string | null>(null);
+  const phaseDropTargetRef = useRef<{
+    el: HTMLElement;
+    position: "before" | "after";
+  } | null>(null);
+  const clearPhaseDropIndicator = useCallback(() => {
+    const current = phaseDropTargetRef.current;
+    if (current) {
+      current.el.classList.remove("wbs-drop-before", "wbs-drop-after");
+      phaseDropTargetRef.current = null;
+    }
+  }, []);
 
   const toggle = useCallback((id: string) => {
     setCollapsed((prev) => {
@@ -624,6 +645,10 @@ export function GanttChart({
                   onToggle={toggle}
                   onTaskClick={onTaskClick}
                   onPhaseEdit={onPhaseEdit}
+                  onReorderPhases={onReorderPhases}
+                  draggedPhaseIdRef={draggedPhaseIdRef}
+                  phaseDropTargetRef={phaseDropTargetRef}
+                  clearPhaseDropIndicator={clearPhaseDropIndicator}
                   readOnly={readOnly}
                   editingPhase={editingPhase}
                   setEditingPhase={setEditingPhase}
@@ -685,6 +710,17 @@ interface LeftCellProps {
   onToggle: (id: string) => void;
   onTaskClick: (task: WbsTask) => void;
   onPhaseEdit: (id: string, patch: { label?: string; goal?: string }) => void;
+  onReorderPhases?: (
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) => void;
+  draggedPhaseIdRef: React.MutableRefObject<string | null>;
+  phaseDropTargetRef: React.MutableRefObject<{
+    el: HTMLElement;
+    position: "before" | "after";
+  } | null>;
+  clearPhaseDropIndicator: () => void;
   readOnly: boolean;
   editingPhase: { id: string; field: "label" | "goal" } | null;
   setEditingPhase: (p: { id: string; field: "label" | "goal" } | null) => void;
@@ -697,6 +733,10 @@ const LeftCell: FC<LeftCellProps> = ({
   onToggle,
   onTaskClick,
   onPhaseEdit,
+  onReorderPhases,
+  draggedPhaseIdRef,
+  phaseDropTargetRef,
+  clearPhaseDropIndicator,
   readOnly,
   editingPhase,
   setEditingPhase,
@@ -725,18 +765,103 @@ const LeftCell: FC<LeftCellProps> = ({
 
   if (row.kind === "phase") {
     const isCollapsed = collapsed.has(row.phase.id);
+    const dndEnabled = !readOnly && !!onReorderPhases;
+    const phaseId = row.phase.id;
     return (
       <div
-        className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 px-3 transition hover:brightness-95"
+        className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 pr-3 transition hover:brightness-95"
         style={{
           height,
           background: row.colorSet.soft,
           borderLeft: `4px solid ${row.colorSet.main}`,
         }}
-        onClick={() => onToggle(row.phase.id)}
+        onClick={() => onToggle(phaseId)}
+        onDragOver={(e) => {
+          const draggedId = draggedPhaseIdRef.current;
+          if (!draggedId || draggedId === phaseId) {
+            return;
+          }
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          const rect = e.currentTarget.getBoundingClientRect();
+          const position: "before" | "after" =
+            e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+          const current = phaseDropTargetRef.current;
+          if (
+            current &&
+            current.el === e.currentTarget &&
+            current.position === position
+          ) {
+            return;
+          }
+          clearPhaseDropIndicator();
+          e.currentTarget.classList.add(
+            position === "before" ? "wbs-drop-before" : "wbs-drop-after",
+          );
+          phaseDropTargetRef.current = {
+            el: e.currentTarget,
+            position,
+          };
+        }}
+        onDragLeave={(e) => {
+          const current = phaseDropTargetRef.current;
+          if (current && current.el === e.currentTarget) {
+            // 別の要素へ移ったタイミングで枠を消す。dragover 側で再度立つので
+            // 同じ要素内のホバーは問題にならない。
+            const related = e.relatedTarget as Node | null;
+            if (!related || !e.currentTarget.contains(related)) {
+              clearPhaseDropIndicator();
+            }
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const draggedId = draggedPhaseIdRef.current;
+          const current = phaseDropTargetRef.current;
+          clearPhaseDropIndicator();
+          draggedPhaseIdRef.current = null;
+          if (
+            draggedId &&
+            current &&
+            draggedId !== phaseId &&
+            onReorderPhases
+          ) {
+            onReorderPhases(draggedId, phaseId, current.position);
+          }
+        }}
       >
+        {dndEnabled && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`${row.phase.label} を並び替え`}
+            title="ドラッグでフェーズを並び替え"
+            draggable
+            onClick={(e) => e.stopPropagation()}
+            onDragStart={(e) => {
+              draggedPhaseIdRef.current = phaseId;
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", phaseId);
+              const rowEl = e.currentTarget.parentElement;
+              if (rowEl) {
+                rowEl.classList.add("wbs-dragging");
+              }
+            }}
+            onDragEnd={(e) => {
+              draggedPhaseIdRef.current = null;
+              clearPhaseDropIndicator();
+              const rowEl = e.currentTarget.parentElement;
+              if (rowEl) {
+                rowEl.classList.remove("wbs-dragging");
+              }
+            }}
+            className="mr-1 flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-[14px] leading-none text-gray-400 transition hover:bg-white/70 hover:text-gray-700 active:cursor-grabbing"
+          >
+            ⋮⋮
+          </span>
+        )}
         <span
-          className="mr-2 inline-block text-[11px] text-gray-600 transition-transform"
+          className="mr-2 inline-block pl-1 text-[11px] text-gray-600 transition-transform"
           style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
         >
           ▼

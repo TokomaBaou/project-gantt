@@ -1,4 +1,4 @@
-import type { WbsTask } from "@/types/wbs";
+import type { PhaseMeta, WbsTask } from "@/types/wbs";
 
 /**
  * ガントチャートのレイアウト設定（タスクの並び順・エピックのタイトル上書き）を
@@ -8,6 +8,7 @@ import type { WbsTask } from "@/types/wbs";
 
 const ORDER_KEY_PREFIX = "wbs:order:";
 const PHASES_KEY_PREFIX = "wbs:phases:";
+const PHASE_ORDER_KEY_PREFIX = "wbs:phase-order:";
 const DATA_MODE_KEY_PREFIX = "wbs:data-mode:";
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -185,6 +186,82 @@ export function savePhaseOverrides(
   overrides: Record<string, PhaseOverride>,
 ): void {
   debouncedWrite(PHASES_KEY_PREFIX + slug, overrides);
+}
+
+/**
+ * 案件ごとのフェーズ並び順（PhaseMeta.id 配列）を取得する。
+ * 未保存・SSR 中・不正値の場合は空配列を返す。
+ */
+function loadPhaseOrder(slug: string): string[] {
+  return readJSON<string[]>(
+    PHASE_ORDER_KEY_PREFIX + slug,
+    [],
+    (value): value is string[] =>
+      Array.isArray(value) && value.every((item) => typeof item === "string"),
+  );
+}
+
+/**
+ * フェーズ配列に、保存済みの並び順を適用する。
+ * 未登録のフェーズは元の順序のまま末尾に残す。
+ */
+export function applyPhaseOrder(
+  slug: string,
+  phases: PhaseMeta[],
+): PhaseMeta[] {
+  const saved = loadPhaseOrder(slug);
+  if (saved.length === 0) {
+    return phases;
+  }
+  const rank = new Map<string, number>();
+  saved.forEach((id, idx) => rank.set(id, idx));
+  return phases
+    .map((phase, idx) => ({ phase, idx }))
+    .sort((a, b) => {
+      const rankA = rank.get(a.phase.id) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = rank.get(b.phase.id) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+      return a.idx - b.idx;
+    })
+    .map((entry) => entry.phase);
+}
+
+/** フェーズ並び順（フェーズ ID 配列）をデバウンス付きで保存する。 */
+export function savePhaseOrder(slug: string, ids: string[]): void {
+  debouncedWrite(PHASE_ORDER_KEY_PREFIX + slug, ids);
+}
+
+/**
+ * ドラッグ中のフェーズを、ドロップ先フェーズの直前/直後へ移動した新しい配列を返す。
+ * 無変更の場合は元の配列をそのまま返す。
+ */
+export function reorderPhasesInArray(
+  phases: PhaseMeta[],
+  draggedId: string,
+  targetId: string,
+  position: "before" | "after",
+): PhaseMeta[] {
+  if (draggedId === targetId) {
+    return phases;
+  }
+  const draggedIdx = phases.findIndex((p) => p.id === draggedId);
+  const targetIdx = phases.findIndex((p) => p.id === targetId);
+  if (draggedIdx === -1 || targetIdx === -1) {
+    return phases;
+  }
+  const next = phases.slice();
+  const [moved] = next.splice(draggedIdx, 1);
+  let insertIdx = next.findIndex((p) => p.id === targetId);
+  if (position === "after") {
+    insertIdx += 1;
+  }
+  next.splice(insertIdx, 0, moved);
+  const unchanged =
+    next.length === phases.length &&
+    next.every((p, i) => p.id === phases[i].id);
+  return unchanged ? phases : next;
 }
 
 /**
