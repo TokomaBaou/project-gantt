@@ -3,22 +3,23 @@ import type { PhaseMeta, ProjectMeta } from "@/types/wbs";
 const EA_PHASES: PhaseMeta[] = [
   {
     id: "ep1",
-    label: "受講前bot",
-    goal: "本番リリース目標: 6月下旬",
+    label: "受講後bot: Web版 開発・リリース",
+    goal: "最優先。α版: 6月上旬 / β版: 6月中旬〜下旬",
   },
   {
     id: "ep2",
-    label: "受講後bot",
-    goal: "プロトタイプ完成: 7月上旬",
+    label: "受講後bot: LINE版 リリース",
+    goal: "LINE版リリース目標: 7月中旬",
   },
   {
     id: "ep3",
-    label: "ファインチューニング",
-    goal: "完了目標: 8月上旬",
+    label: "受講後bot: 運用・精度改善",
+    goal: "メソッド精度・ファインチューニング・LLM最適化（〜9月末）",
   },
   {
     id: "ep4",
-    label: "バックオフィス自動化",
+    label: "受講前bot",
+    goal: "後回し。受講後bot後に着手、7月下旬〜8月下旬",
   },
 ];
 
@@ -34,8 +35,7 @@ export const PROJECTS: ProjectMeta[] = [
   {
     slug: "ea",
     name: "Enlight Academy",
-    description:
-      "AI効率化PoC — 受講前bot・受講後bot・ファインチューニング・バックオフィス自動化",
+    description: "AI効率化PoC — 受講後bot（Web/LINE/運用改善）・受講前bot",
     phases: EA_PHASES,
     notionProjectNames: ["Enlight Academy"],
     hearingStartDate: "2026-04-24",
