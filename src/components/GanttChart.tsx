@@ -78,6 +78,13 @@ const PHASE_COLORS: PhaseColorSet[] = [
   { main: "#9ca3af", light: "#E5E7EB", soft: "#F9FAFB", text: "#374151" },
 ];
 
+const LEGEND_PHASE_ENTRIES: { label: string }[] = [
+  { label: "Web版 開発" },
+  { label: "LINE版" },
+  { label: "運用・精度改善" },
+  { label: "受講前bot" },
+];
+
 const MILESTONE_COLOR = "#7C3AED";
 
 const DAY_PX_BY_ZOOM: Record<ZoomMode, number> = {
@@ -723,11 +730,11 @@ export function GanttChart({
               className="relative flex items-center gap-4 px-3 text-[11px] text-gray-600"
               style={{ height: LEGEND_H }}
             >
-              {phases.map((p, i) => {
+              {LEGEND_PHASE_ENTRIES.map((entry, i) => {
                 const c = PHASE_COLORS[i % PHASE_COLORS.length];
                 return (
                   <span
-                    key={p.id}
+                    key={entry.label}
                     className="flex items-center gap-1.5 whitespace-nowrap"
                   >
                     <span
@@ -741,7 +748,7 @@ export function GanttChart({
                       className="truncate text-[11px] font-medium"
                       style={{ color: c.text, maxWidth: 140 }}
                     >
-                      {p.label}
+                      {entry.label}
                     </span>
                   </span>
                 );
