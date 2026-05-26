@@ -44,12 +44,18 @@ const MONTH_HEADER_H = 30;
 const WEEK_HEADER_H = 26;
 const LEGEND_H = 36;
 const HEADER_TOTAL_H = MONTH_HEADER_H + WEEK_HEADER_H + LEGEND_H;
-const MILESTONE_ROW_H = 60;
 const PHASE_ROW_H = 48;
 const EPIC_ROW_H = 36;
 const TASK_ROW_H = 36;
 const TIMELINE_PAD_DAYS = 7;
 const MS_PER_DAY = 86400000;
+
+// マイルストーン行のレイアウト
+const MS_DIAMOND_SIZE = 8;
+const MS_DIAMOND_BOTTOM_GAP = 6;
+const MS_LANE_HEIGHT = 28;
+const MS_ROW_TOP_PAD = 10;
+const MS_ROW_BOTTOM_PAD = MS_DIAMOND_BOTTOM_GAP + MS_DIAMOND_SIZE + 2;
 
 interface PhaseColorSet {
   main: string;
@@ -125,6 +131,69 @@ interface EpicGroup {
   id: string | null;
   name: string;
   tasks: WbsTask[];
+}
+
+interface MilestonePlacement {
+  task: WbsTask;
+  centerPx: number;
+  /** 0 が下端（ダイヤの直上）、増えるほど上に積まれる。 */
+  lane: number;
+}
+
+/**
+ * マイルストーン名から末尾の括弧書き（「（先方タッチポイント）」等）を落として
+ * ガント上で読みやすい短い表記にする。
+ */
+function shortMilestoneName(name: string): string {
+  const trimmed = name.replace(/[（(][^（()）]*[)）]\s*$/, "").trim();
+  return trimmed || name;
+}
+
+/** 10px フォントを想定したラベル幅のラフな見積もり。 */
+function estimateLabelWidth(name: string): number {
+  let w = 0;
+  for (const ch of name) {
+    if (/[ -~]/.test(ch)) {
+      w += 6;
+    } else {
+      w += 12;
+    }
+  }
+  return Math.max(56, w + 10);
+}
+
+/**
+ * マイルストーンを日付順に走査し、ラベルが重ならないよう lane（縦の段）を
+ * 割り当てる。下段（lane 0）から順に詰め、収まらないものは上段へ。
+ */
+function layoutMilestones(
+  milestones: WbsTask[],
+  xOf: (d: Date) => number,
+  dayPx: number,
+): MilestonePlacement[] {
+  const sorted = [...milestones].sort(
+    (a, b) => a.start.getTime() - b.start.getTime(),
+  );
+  const laneRightX: number[] = [];
+  return sorted.map((task) => {
+    const centerPx = xOf(task.start) + dayPx / 2;
+    const labelW = estimateLabelWidth(shortMilestoneName(task.name));
+    const labelLeft = centerPx - labelW / 2;
+    const labelRight = centerPx + labelW / 2;
+    let lane = -1;
+    for (let i = 0; i < laneRightX.length; i++) {
+      if (labelLeft >= laneRightX[i] + 6) {
+        lane = i;
+        break;
+      }
+    }
+    if (lane === -1) {
+      lane = laneRightX.length;
+      laneRightX.push(0);
+    }
+    laneRightX[lane] = labelRight;
+    return { task, centerPx, lane };
+  });
 }
 
 function groupByEpic(tasks: WbsTask[]): EpicGroup[] {
@@ -216,7 +285,11 @@ function buildWeekSegments(start: Date, end: Date, dayPx: number): WeekSeg[] {
 
 // ─────────────── 行モデル ───────────────
 type Row =
-  | { kind: "milestone-track"; tasks: WbsTask[] }
+  | {
+      kind: "milestone-track";
+      placements: MilestonePlacement[];
+      laneCount: number;
+    }
   | {
       kind: "phase";
       phase: PhaseMeta;
@@ -242,7 +315,11 @@ type Row =
 
 function rowHeightOf(row: Row): number {
   if (row.kind === "milestone-track") {
-    return MILESTONE_ROW_H;
+    return (
+      MS_ROW_TOP_PAD +
+      Math.max(1, row.laneCount) * MS_LANE_HEIGHT +
+      MS_ROW_BOTTOM_PAD
+    );
   }
   if (row.kind === "phase") {
     return PHASE_ROW_H;
@@ -344,11 +421,20 @@ export function GanttChart({
     [timelineStart, timelineEnd, dayPx, showWeeks],
   );
 
+  const xOf = useCallback(
+    (d: Date) => diffDays(timelineStart, d) * dayPx,
+    [timelineStart, dayPx],
+  );
+
   const rows: Row[] = useMemo(() => {
     const result: Row[] = [];
     const milestones = tasks.filter((t) => t.kind === "milestone");
     if (milestones.length > 0) {
-      result.push({ kind: "milestone-track", tasks: milestones });
+      const placements = layoutMilestones(milestones, xOf, dayPx);
+      const laneCount = placements.length
+        ? Math.max(...placements.map((p) => p.lane + 1))
+        : 1;
+      result.push({ kind: "milestone-track", placements, laneCount });
     }
     for (let pi = 0; pi < phases.length; pi++) {
       const phase = phases[pi];
@@ -403,18 +489,13 @@ export function GanttChart({
       }
     }
     return result;
-  }, [tasks, phases, collapsed]);
+  }, [tasks, phases, collapsed, xOf, dayPx]);
 
   const today = startOfDay(new Date());
   const todayInRange =
     today.getTime() >= timelineStart.getTime() &&
     today.getTime() <= timelineEnd.getTime();
   const todayPx = diffDays(timelineStart, today) * dayPx + dayPx / 2;
-
-  const xOf = useCallback(
-    (d: Date) => diffDays(timelineStart, d) * dayPx,
-    [timelineStart, dayPx],
-  );
 
   const monthBoundaryPxs = useMemo(() => {
     const arr: number[] = [];
@@ -818,32 +899,59 @@ const RightCell: FC<RightCellProps> = ({
       ))}
 
       {row.kind === "milestone-track" &&
-        row.tasks.map((m) => {
-          const left = xOf(m.start) + dayPx / 2;
+        row.placements.map(({ task, centerPx, lane }) => {
+          // 行内のレイアウト:
+          //   下端: ダイヤ (MS_DIAMOND_SIZE), MS_DIAMOND_BOTTOM_GAP の余白
+          //   ラベル: 下段(lane 0)がダイヤに最も近く、lane が増えるほど上に積む
+          const diamondTop = height - MS_DIAMOND_BOTTOM_GAP - MS_DIAMOND_SIZE;
+          const laneBottom = diamondTop - 4;
+          const laneTop = laneBottom - (lane + 1) * MS_LANE_HEIGHT + 4;
+          const labelTop = laneTop;
+          const connectorTop = labelTop + 22;
           return (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onTaskClick(m)}
-              title={`${m.name} (${formatShortDate(m.start)})`}
-              className="absolute flex -translate-x-1/2 flex-col items-center"
-              style={{ left, top: 6 }}
-            >
-              <span
+            <Fragment key={task.id}>
+              {/* ラベル → ダイヤをつなぐ縦線 */}
+              <div
                 aria-hidden
-                className="block h-3.5 w-3.5 rotate-45 shadow"
-                style={{ backgroundColor: MILESTONE_COLOR }}
+                className="pointer-events-none absolute bg-violet-300"
+                style={{
+                  left: centerPx - 0.5,
+                  top: connectorTop,
+                  width: 1,
+                  height: Math.max(diamondTop - connectorTop, 2),
+                }}
               />
-              <span
-                className="mt-1.5 whitespace-nowrap rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 shadow-sm ring-1 ring-violet-100"
-                style={{ marginTop: 8 }}
+              {/* ラベル（名前 + 日付） */}
+              <button
+                type="button"
+                onClick={() => onTaskClick(task)}
+                title={`${task.name} (${formatShortDate(task.start)})`}
+                className="absolute flex -translate-x-1/2 flex-col items-center text-center"
+                style={{ left: centerPx, top: labelTop }}
               >
-                {m.name}
-              </span>
-              <span className="mt-0.5 text-[9px] text-gray-500">
-                {formatShortDate(m.start)}
-              </span>
-            </button>
+                <span className="whitespace-nowrap text-[10px] font-medium text-violet-700 underline decoration-violet-300 decoration-1 underline-offset-2">
+                  {shortMilestoneName(task.name)}
+                </span>
+                <span className="mt-0.5 whitespace-nowrap text-[9px] text-gray-500">
+                  {formatShortDate(task.start)}
+                </span>
+              </button>
+              {/* ダイヤ */}
+              <button
+                type="button"
+                onClick={() => onTaskClick(task)}
+                title={`${task.name} (${formatShortDate(task.start)})`}
+                aria-label={task.name}
+                className="absolute -translate-x-1/2 rotate-45 shadow"
+                style={{
+                  left: centerPx,
+                  top: diamondTop,
+                  width: MS_DIAMOND_SIZE,
+                  height: MS_DIAMOND_SIZE,
+                  backgroundColor: MILESTONE_COLOR,
+                }}
+              />
+            </Fragment>
           );
         })}
 
