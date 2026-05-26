@@ -79,6 +79,12 @@ export function WbsContainer({
   const [phases, setPhases] = useState<PhaseMeta[]>(project.phases);
   const [fitSignal, setFitSignal] = useState(0);
   const fitToView = useCallback(() => setFitSignal((n) => n + 1), []);
+  const [byAssignee, setByAssignee] = useState<boolean>(false);
+  const [focusThisWeekSignal, setFocusThisWeekSignal] = useState(0);
+  const focusThisWeek = useCallback(
+    () => setFocusThisWeekSignal((n) => n + 1),
+    [],
+  );
 
   const fetchTasksOnce = useCallback(
     async (isAborted: () => boolean): Promise<void> => {
@@ -447,6 +453,9 @@ export function WbsContainer({
         onScopeFilterChange={setScopeFilter}
         showScopeFilter={project.slug === "ea"}
         readOnly={!canEdit}
+        byAssignee={byAssignee}
+        onByAssigneeChange={setByAssignee}
+        onFocusThisWeek={focusThisWeek}
       />
 
       <StatusLegend />
@@ -460,6 +469,8 @@ export function WbsContainer({
           assignees={assignees}
           zoom={zoom}
           fitSignal={fitSignal}
+          focusThisWeekSignal={focusThisWeekSignal}
+          byAssignee={byAssignee}
           readOnly={!canEdit}
           onTaskClick={setSelectedTask}
           onDateChange={handleDateChange}

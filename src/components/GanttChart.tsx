@@ -23,6 +23,8 @@ interface GanttChartProps {
   assignees: string[];
   zoom: ZoomMode;
   fitSignal?: number;
+  focusThisWeekSignal?: number;
+  byAssignee: boolean;
   readOnly: boolean;
   onTaskClick: (task: WbsTask) => void;
   onDateChange: (id: string, start: Date, end: Date) => void;
@@ -312,10 +314,20 @@ type Row =
       progress: number;
     }
   | {
+      kind: "assignee";
+      id: string;
+      name: string;
+      colorSet: PhaseColorSet;
+      span: { start: Date; end: Date };
+      progress: number;
+      taskCount: number;
+    }
+  | {
       kind: "task";
       task: WbsTask;
       colorSet: PhaseColorSet;
       indent: 1 | 2;
+      isThisWeek: boolean;
     };
 
 function rowHeightOf(row: Row): number {
@@ -332,6 +344,9 @@ function rowHeightOf(row: Row): number {
   if (row.kind === "epic") {
     return EPIC_ROW_H;
   }
+  if (row.kind === "assignee") {
+    return PHASE_ROW_H;
+  }
   return TASK_ROW_H;
 }
 
@@ -345,7 +360,29 @@ function rowKey(row: Row, idx: number): string {
   if (row.kind === "epic") {
     return `epic-${row.id}`;
   }
+  if (row.kind === "assignee") {
+    return `assignee-${row.id}`;
+  }
   return `task-${row.task.id}`;
+}
+
+function startOfThisWeek(): Date {
+  return startOfISOWeek(new Date());
+}
+
+function endOfThisWeek(): Date {
+  return addDays(startOfThisWeek(), 6);
+}
+
+function overlapsThisWeek(
+  task: WbsTask,
+  weekStart: Date,
+  weekEnd: Date,
+): boolean {
+  return (
+    task.start.getTime() <= weekEnd.getTime() &&
+    task.end.getTime() >= weekStart.getTime()
+  );
 }
 
 // ─────────────── コンポーネント本体 ───────────────
@@ -354,6 +391,8 @@ export function GanttChart({
   phases,
   zoom,
   fitSignal,
+  focusThisWeekSignal,
+  byAssignee,
   readOnly,
   onTaskClick,
   onPhaseEdit,
@@ -447,6 +486,9 @@ export function GanttChart({
     [timelineStart, dayPx],
   );
 
+  const weekStart = useMemo(() => startOfThisWeek(), []);
+  const weekEnd = useMemo(() => endOfThisWeek(), []);
+
   const rows: Row[] = useMemo(() => {
     const result: Row[] = [];
     const milestones = tasks.filter((t) => t.kind === "milestone");
@@ -457,6 +499,61 @@ export function GanttChart({
         : 1;
       result.push({ kind: "milestone-track", placements, laneCount });
     }
+
+    if (byAssignee) {
+      const nonMilestone = tasks.filter((t) => t.kind !== "milestone");
+      const phaseColorById = new Map<string, PhaseColorSet>();
+      phases.forEach((p, i) => {
+        phaseColorById.set(p.id, PHASE_COLORS[i % PHASE_COLORS.length]);
+      });
+      const groupMap = new Map<string, WbsTask[]>();
+      const order: string[] = [];
+      for (const t of nonMilestone) {
+        const key = t.assignee && t.assignee.trim() ? t.assignee : "未割当";
+        if (!groupMap.has(key)) {
+          groupMap.set(key, []);
+          order.push(key);
+        }
+        groupMap.get(key)!.push(t);
+      }
+      const sorted = order.filter((k) => k !== "未割当").sort();
+      if (groupMap.has("未割当")) {
+        sorted.push("未割当");
+      }
+      sorted.forEach((name, idx) => {
+        const list = groupMap.get(name)!;
+        const colorSet = PHASE_COLORS[idx % PHASE_COLORS.length];
+        const groupRange = rangeOf(list)!;
+        const groupProgress = Math.round(
+          list.reduce((s, t) => s + t.progress, 0) / list.length,
+        );
+        const groupId = `__assignee__${name}`;
+        result.push({
+          kind: "assignee",
+          id: groupId,
+          name,
+          colorSet,
+          span: groupRange,
+          progress: groupProgress,
+          taskCount: list.length,
+        });
+        if (collapsed.has(groupId)) {
+          return;
+        }
+        for (const task of list) {
+          const taskColor = phaseColorById.get(task.phase) ?? colorSet;
+          result.push({
+            kind: "task",
+            task,
+            colorSet: taskColor,
+            indent: 1,
+            isThisWeek: overlapsThisWeek(task, weekStart, weekEnd),
+          });
+        }
+      });
+      return result;
+    }
+
     for (let pi = 0; pi < phases.length; pi++) {
       const phase = phases[pi];
       const colorSet = PHASE_COLORS[pi % PHASE_COLORS.length];
@@ -500,23 +597,54 @@ export function GanttChart({
             continue;
           }
           for (const task of epic.tasks) {
-            result.push({ kind: "task", task, colorSet, indent: 2 });
+            result.push({
+              kind: "task",
+              task,
+              colorSet,
+              indent: 2,
+              isThisWeek: overlapsThisWeek(task, weekStart, weekEnd),
+            });
           }
         } else {
           for (const task of epic.tasks) {
-            result.push({ kind: "task", task, colorSet, indent: 1 });
+            result.push({
+              kind: "task",
+              task,
+              colorSet,
+              indent: 1,
+              isThisWeek: overlapsThisWeek(task, weekStart, weekEnd),
+            });
           }
         }
       }
     }
     return result;
-  }, [tasks, phases, collapsed, xOf, dayPx]);
+  }, [tasks, phases, collapsed, xOf, dayPx, byAssignee, weekStart, weekEnd]);
 
   const today = startOfDay(new Date());
   const todayInRange =
     today.getTime() >= timelineStart.getTime() &&
     today.getTime() <= timelineEnd.getTime();
   const todayPx = diffDays(timelineStart, today) * dayPx + dayPx / 2;
+
+  const weekStartPx = diffDays(timelineStart, weekStart) * dayPx;
+  const weekWidthPx = 7 * dayPx;
+  const weekInRange =
+    weekEnd.getTime() >= timelineStart.getTime() &&
+    weekStart.getTime() <= timelineEnd.getTime();
+
+  useEffect(() => {
+    if (focusThisWeekSignal === undefined) {
+      return;
+    }
+    const el = containerRef.current;
+    if (!el || !weekInRange) {
+      return;
+    }
+    const targetLeft = LIST_WIDTH + weekStartPx - 80;
+    el.scrollTo({ left: Math.max(targetLeft, 0), behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusThisWeekSignal]);
 
   const monthBoundaryPxs = useMemo(() => {
     const arr: number[] = [];
@@ -666,6 +794,22 @@ export function GanttChart({
             );
           })}
         </div>
+
+        {/* 今週の縦帯（タイムライン領域全体に貫通） */}
+        {weekInRange && (
+          <div
+            className="pointer-events-none absolute z-10"
+            style={{
+              left: LIST_WIDTH + weekStartPx,
+              top: HEADER_TOTAL_H,
+              bottom: 0,
+              width: weekWidthPx,
+              backgroundColor: "rgba(255, 214, 10, 0.12)",
+              borderLeft: "1px dashed rgba(217, 119, 6, 0.45)",
+              borderRight: "1px dashed rgba(217, 119, 6, 0.45)",
+            }}
+          />
+        )}
 
         {/* 今日の縦線（タイムライン領域全体に貫通） */}
         {todayInRange && (
@@ -946,10 +1090,55 @@ const LeftCell: FC<LeftCellProps> = ({
     );
   }
 
+  if (row.kind === "assignee") {
+    const isCollapsed = collapsed.has(row.id);
+    return (
+      <div
+        className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 pr-3 transition hover:brightness-95"
+        style={{
+          height,
+          background: row.colorSet.soft,
+          borderLeft: `4px solid ${row.colorSet.main}`,
+          paddingLeft: 12,
+        }}
+        onClick={() => onToggle(row.id)}
+      >
+        <span
+          className="mr-2 inline-block text-[11px] text-gray-600 transition-transform"
+          style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+        >
+          ▼
+        </span>
+        <span
+          aria-hidden
+          className="mr-2 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+          style={{ backgroundColor: row.colorSet.main }}
+        >
+          {row.name.slice(0, 1)}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col leading-tight">
+          <span
+            className="truncate text-[13px] font-bold"
+            style={{ color: row.colorSet.text }}
+          >
+            {row.name}
+          </span>
+          <span className="truncate text-[10px] text-gray-500">
+            {row.taskCount}件
+          </span>
+        </div>
+        <span className="ml-2 shrink-0 text-[11px] font-semibold text-gray-600">
+          {row.progress}%
+        </span>
+      </div>
+    );
+  }
+
   // task row
   const t = row.task;
   const isDone = t.status === "done";
   const indentPx = row.indent === 2 ? 52 : 32;
+  const isThisWeek = row.isThisWeek;
   return (
     <div
       className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 bg-white pr-3 transition hover:bg-gray-50"
@@ -960,6 +1149,15 @@ const LeftCell: FC<LeftCellProps> = ({
       onClick={() => onTaskClick(t)}
     >
       <div className="flex flex-1 items-center gap-1.5 overflow-hidden text-[12px] text-gray-800">
+        {isThisWeek && !isDone && (
+          <span
+            aria-label="今週アクティブ"
+            title="今週アクティブなタスク"
+            className="shrink-0 text-[12px] leading-none text-[#D97706]"
+          >
+            ●
+          </span>
+        )}
         {isDone && (
           <span aria-hidden className="shrink-0 text-[11px] text-green-600">
             ✅
@@ -1080,7 +1278,9 @@ const RightCell: FC<RightCellProps> = ({
           );
         })}
 
-      {(row.kind === "phase" || row.kind === "epic") && (
+      {(row.kind === "phase" ||
+        row.kind === "epic" ||
+        row.kind === "assignee") && (
         <SpanBar
           start={row.span.start}
           end={row.span.end}
@@ -1089,7 +1289,7 @@ const RightCell: FC<RightCellProps> = ({
           xOf={xOf}
           dayPx={dayPx}
           height={height}
-          kind={row.kind}
+          kind={row.kind === "epic" ? "epic" : "phase"}
         />
       )}
 
@@ -1101,6 +1301,7 @@ const RightCell: FC<RightCellProps> = ({
           dayPx={dayPx}
           height={height}
           onTaskClick={onTaskClick}
+          isThisWeek={row.isThisWeek}
         />
       )}
     </div>
@@ -1161,6 +1362,7 @@ function TaskBar({
   dayPx,
   height,
   onTaskClick,
+  isThisWeek,
 }: {
   task: WbsTask;
   colorSet: PhaseColorSet;
@@ -1168,6 +1370,7 @@ function TaskBar({
   dayPx: number;
   height: number;
   onTaskClick: (task: WbsTask) => void;
+  isThisWeek: boolean;
 }) {
   const left = xOf(task.start);
   const width = Math.max((diffDays(task.start, task.end) + 1) * dayPx, 6);
@@ -1175,6 +1378,13 @@ function TaskBar({
   const top = (height - barHeight) / 2;
   const isDone = task.status === "done";
   const progressWidth = Math.min(Math.max(task.progress, 0), 100);
+  const showAssigneeLabel = !!task.assignee && width >= 60;
+  const highlightBorder = isThisWeek
+    ? `2px solid #D97706`
+    : `1px solid ${colorSet.main}`;
+  const boxShadow = isThisWeek
+    ? "0 0 0 2px rgba(255, 214, 10, 0.45)"
+    : undefined;
   return (
     <button
       type="button"
@@ -1182,7 +1392,7 @@ function TaskBar({
         e.stopPropagation();
         onTaskClick(task);
       }}
-      title={`${task.name} (${formatShortDate(task.start)} – ${formatShortDate(task.end)})`}
+      title={`${task.name}${task.assignee ? ` / ${task.assignee}` : ""} (${formatShortDate(task.start)} – ${formatShortDate(task.end)})`}
       className="absolute overflow-hidden rounded transition hover:brightness-95"
       style={{
         left,
@@ -1190,8 +1400,9 @@ function TaskBar({
         width,
         height: barHeight,
         backgroundColor: isDone ? colorSet.soft : colorSet.light,
-        border: `1px solid ${colorSet.main}`,
+        border: highlightBorder,
         opacity: isDone ? 0.7 : 1,
+        boxShadow,
       }}
     >
       <div
@@ -1202,6 +1413,15 @@ function TaskBar({
           opacity: 0.85,
         }}
       />
+      {showAssigneeLabel && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[9px] font-semibold leading-none"
+          style={{ color: colorSet.text }}
+        >
+          {task.assignee}
+        </span>
+      )}
       {isDone && (
         <span
           aria-hidden

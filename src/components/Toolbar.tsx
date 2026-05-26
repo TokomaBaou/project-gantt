@@ -24,6 +24,9 @@ interface ToolbarProps {
   onScopeFilterChange: (value: ScopeFilter) => void;
   showScopeFilter?: boolean;
   readOnly?: boolean;
+  byAssignee: boolean;
+  onByAssigneeChange: (value: boolean) => void;
+  onFocusThisWeek?: () => void;
 }
 
 const ZOOM_OPTIONS: { value: ZoomMode; label: string }[] = [
@@ -63,6 +66,9 @@ export function Toolbar({
   onScopeFilterChange,
   showScopeFilter,
   readOnly,
+  byAssignee,
+  onByAssigneeChange,
+  onFocusThisWeek,
 }: ToolbarProps) {
   const scopeHint =
     SCOPE_OPTIONS.find((o) => o.value === scopeFilter)?.hint ?? "";
@@ -96,6 +102,46 @@ export function Toolbar({
             全体表示
           </button>
         )}
+        {onFocusThisWeek && (
+          <button
+            type="button"
+            onClick={onFocusThisWeek}
+            title="今週の列にスクロール＆ハイライト"
+            className="rounded-lg border border-[#FFD60A]/70 bg-[#FFFBEB] px-2.5 py-1 text-sm font-semibold text-[#92400E] transition hover:bg-[#FEF3C7] active:bg-[#FDE68A]"
+          >
+            今週
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-[#8E8E93]">表示</span>
+        <div className="inline-flex overflow-hidden rounded-lg bg-[#F2F2F7] p-0.5">
+          <button
+            type="button"
+            onClick={() => onByAssigneeChange(false)}
+            title="フェーズ→エピック→タスクで階層表示"
+            className={`rounded-md px-2.5 py-1 text-sm font-medium transition ${
+              !byAssignee
+                ? "bg-white text-[#007AFF] shadow-sm"
+                : "text-[#8E8E93] hover:text-[#1C1C1E]"
+            }`}
+          >
+            階層
+          </button>
+          <button
+            type="button"
+            onClick={() => onByAssigneeChange(true)}
+            title="担当者ごとにグルーピングして並列表示"
+            className={`rounded-md px-2.5 py-1 text-sm font-medium transition ${
+              byAssignee
+                ? "bg-white text-[#007AFF] shadow-sm"
+                : "text-[#8E8E93] hover:text-[#1C1C1E]"
+            }`}
+          >
+            担当者
+          </button>
+        </div>
       </div>
 
       <FilterSelect
