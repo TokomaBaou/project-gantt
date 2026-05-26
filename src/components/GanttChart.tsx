@@ -640,6 +640,30 @@ export function GanttChart({
     weekEnd.getTime() >= timelineStart.getTime() &&
     weekStart.getTime() <= timelineEnd.getTime();
 
+  const gwBands = useMemo(() => {
+    const bands: { left: number; width: number; key: string }[] = [];
+    const startYear = timelineStart.getFullYear();
+    const endYear = timelineEnd.getFullYear();
+    for (let y = startYear; y <= endYear; y++) {
+      const gwStart = new Date(y, 3, 29);
+      const gwEnd = new Date(y, 4, 6);
+      if (
+        gwEnd.getTime() < timelineStart.getTime() ||
+        gwStart.getTime() > timelineEnd.getTime()
+      ) {
+        continue;
+      }
+      const clampedStart =
+        gwStart.getTime() < timelineStart.getTime() ? timelineStart : gwStart;
+      const clampedEnd =
+        gwEnd.getTime() > timelineEnd.getTime() ? timelineEnd : gwEnd;
+      const left = diffDays(timelineStart, clampedStart) * dayPx;
+      const width = (diffDays(clampedStart, clampedEnd) + 1) * dayPx;
+      bands.push({ left, width, key: `gw-${y}` });
+    }
+    return bands;
+  }, [timelineStart, timelineEnd, dayPx]);
+
   useEffect(() => {
     if (focusThisWeekSignal === undefined) {
       return;
@@ -801,6 +825,35 @@ export function GanttChart({
             );
           })}
         </div>
+
+        {/* ゴールデンウィーク帯（4/29〜5/6） */}
+        {gwBands.map((band) => (
+          <Fragment key={band.key}>
+            <div
+              aria-hidden
+              className="pointer-events-none absolute z-[5]"
+              style={{
+                left: LIST_WIDTH + band.left,
+                top: HEADER_TOTAL_H,
+                bottom: 0,
+                width: band.width,
+                backgroundColor: "rgba(107, 114, 128, 0.15)",
+                borderLeft: "1px dashed rgba(75, 85, 99, 0.4)",
+                borderRight: "1px dashed rgba(75, 85, 99, 0.4)",
+              }}
+            />
+            <div
+              className="pointer-events-none absolute z-[6] flex items-center justify-center rounded-b bg-gray-500/85 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-white shadow"
+              style={{
+                left: LIST_WIDTH + band.left + band.width / 2 - 14,
+                top: HEADER_TOTAL_H,
+                width: 28,
+              }}
+            >
+              GW
+            </div>
+          </Fragment>
+        ))}
 
         {/* 今週の縦帯（タイムライン領域全体に貫通） */}
         {weekInRange && (
