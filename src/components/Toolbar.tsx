@@ -2,7 +2,7 @@
 
 import { STATUS_LABELS, type PhaseMeta, type TaskStatus } from "@/types/wbs";
 
-export type ZoomMode = "day" | "week" | "month" | "year";
+export type ZoomMode = "week" | "month" | "year";
 export type PhaseFilter = "all" | string;
 export type AssigneeFilter = string;
 export type StatusFilter = "all" | "notDone" | TaskStatus;
@@ -27,7 +27,6 @@ interface ToolbarProps {
 }
 
 const ZOOM_OPTIONS: { value: ZoomMode; label: string }[] = [
-  { value: "day", label: "日" },
   { value: "week", label: "週" },
   { value: "month", label: "月" },
   { value: "year", label: "年" },

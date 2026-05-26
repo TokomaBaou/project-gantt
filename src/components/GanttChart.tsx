@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -8,8 +9,6 @@ import {
   useState,
   type FC,
 } from "react";
-import { Gantt, type Task, ViewMode } from "gantt-task-react";
-import "gantt-task-react/dist/index.css";
 import {
   STATUS_LABELS,
   type PhaseMeta,
@@ -23,10 +22,6 @@ interface GanttChartProps {
   phases: PhaseMeta[];
   assignees: string[];
   zoom: ZoomMode;
-  /**
-   * `fitSignal` を変更（インクリメント）すると、ガントの列幅を
-   * 表示可能領域に合わせて自動調整する。
-   */
   fitSignal?: number;
   readOnly: boolean;
   onTaskClick: (task: WbsTask) => void;
@@ -44,28 +39,39 @@ interface GanttChartProps {
   ) => void;
 }
 
-/**
- * フェーズごとのバー配色。phases 配列の index で対応付ける（青→緑→オレンジ→グレー）。
- * 4 を超える場合はラップする。
- */
-interface PhaseBarColor {
+const LIST_WIDTH = 380;
+const MONTH_HEADER_H = 30;
+const WEEK_HEADER_H = 26;
+const LEGEND_H = 36;
+const HEADER_TOTAL_H = MONTH_HEADER_H + WEEK_HEADER_H + LEGEND_H;
+const MILESTONE_ROW_H = 60;
+const PHASE_ROW_H = 48;
+const EPIC_ROW_H = 36;
+const TASK_ROW_H = 36;
+const TIMELINE_PAD_DAYS = 7;
+const MS_PER_DAY = 86400000;
+
+interface PhaseColorSet {
   main: string;
-  taskBg: string;
-  epicBg: string;
-  phaseBg: string;
+  light: string;
+  soft: string;
+  text: string;
 }
 
-const PHASE_BAR_COLORS: PhaseBarColor[] = [
-  { main: "#007AFF", taskBg: "#D6E4FF", epicBg: "#B8DAFF", phaseBg: "#E5F1FF" },
-  { main: "#34C759", taskBg: "#D8F2E0", epicBg: "#B8E4C5", phaseBg: "#E8F9ED" },
-  { main: "#FF9500", taskBg: "#FFE4C2", epicBg: "#FFD297", phaseBg: "#FFF3E0" },
-  { main: "#8E8E93", taskBg: "#E5E5EA", epicBg: "#D1D1D6", phaseBg: "#F2F2F7" },
+const PHASE_COLORS: PhaseColorSet[] = [
+  { main: "#6366f1", light: "#E0E7FF", soft: "#EEF2FF", text: "#3730A3" },
+  { main: "#059669", light: "#D1FAE5", soft: "#ECFDF5", text: "#065F46" },
+  { main: "#d97706", light: "#FED7AA", soft: "#FFFBEB", text: "#92400E" },
+  { main: "#9ca3af", light: "#E5E7EB", soft: "#F9FAFB", text: "#374151" },
 ];
 
-/** ガント上部のマイルストーン専用トラック（合成フェーズ）の ID。 */
-const MILESTONE_TRACK_ID = "__milestone_track__";
+const MILESTONE_COLOR = "#7C3AED";
 
-const MILESTONE_COLOR = "#AF52DE";
+const DAY_PX_BY_ZOOM: Record<ZoomMode, number> = {
+  week: 18,
+  month: 6,
+  year: 1.6,
+};
 
 const STATUS_BADGE_CLASSES: Record<TaskStatus, string> = {
   done: "bg-[#E5F1FF] text-[#007AFF]",
@@ -75,13 +81,192 @@ const STATUS_BADGE_CLASSES: Record<TaskStatus, string> = {
   new: "bg-[#FFF3E0] text-[#E65100]",
 };
 
-const ROW_HEIGHT = 40;
-const HEADER_HEIGHT = 50;
-const LIST_WIDTH = "360px";
-// gantt-task-react の水平スクロールバー（1.2rem）ぶんの余白。
-const HSCROLL_HEIGHT = 20;
-const MIN_GANTT_HEIGHT = 160;
+// ─────────────── 日付ユーティリティ ───────────────
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function addDays(d: Date, n: number): Date {
+  const next = new Date(d);
+  next.setDate(d.getDate() + n);
+  return next;
+}
+function diffDays(a: Date, b: Date): number {
+  return Math.round(
+    (startOfDay(b).getTime() - startOfDay(a).getTime()) / MS_PER_DAY,
+  );
+}
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function endOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
+}
+function startOfISOWeek(d: Date): Date {
+  const day = d.getDay() || 7;
+  return startOfDay(addDays(d, -(day - 1)));
+}
+function isoWeekNumber(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(
+    ((date.getTime() - yearStart.getTime()) / MS_PER_DAY + 1) / 7,
+  );
+}
+function formatShortDate(d: Date): string {
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 
+interface EpicGroup {
+  id: string | null;
+  name: string;
+  tasks: WbsTask[];
+}
+
+function groupByEpic(tasks: WbsTask[]): EpicGroup[] {
+  const order: string[] = [];
+  const map = new Map<string, EpicGroup>();
+  const noEpic = "__no_epic__";
+  for (const t of tasks) {
+    const key = t.epic?.id ?? noEpic;
+    if (!map.has(key)) {
+      map.set(key, {
+        id: t.epic?.id ?? null,
+        name: t.epic?.name ?? "",
+        tasks: [],
+      });
+      order.push(key);
+    }
+    map.get(key)!.tasks.push(t);
+  }
+  const sorted = order.filter((k) => k !== noEpic);
+  if (map.has(noEpic)) {
+    sorted.push(noEpic);
+  }
+  return sorted.map((k) => map.get(k)!);
+}
+
+function rangeOf(tasks: WbsTask[]): { start: Date; end: Date } | null {
+  if (tasks.length === 0) {
+    return null;
+  }
+  const startMs = Math.min(...tasks.map((t) => t.start.getTime()));
+  const endMs = Math.max(...tasks.map((t) => t.end.getTime()));
+  return { start: new Date(startMs), end: new Date(endMs) };
+}
+
+interface MonthSeg {
+  key: string;
+  label: string;
+  offsetPx: number;
+  widthPx: number;
+}
+interface WeekSeg {
+  key: string;
+  label: string;
+  offsetPx: number;
+  widthPx: number;
+}
+
+function buildMonthSegments(start: Date, end: Date, dayPx: number): MonthSeg[] {
+  const segs: MonthSeg[] = [];
+  let cursor = startOfMonth(start);
+  while (cursor.getTime() <= end.getTime()) {
+    const next = startOfMonth(addMonths(cursor, 1));
+    const segStart = cursor < start ? start : cursor;
+    const segEnd = next > addDays(end, 1) ? addDays(end, 1) : next;
+    const days = diffDays(segStart, segEnd);
+    if (days > 0) {
+      segs.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+        label: `${cursor.getFullYear()}年${cursor.getMonth() + 1}月`,
+        offsetPx: diffDays(start, segStart) * dayPx,
+        widthPx: days * dayPx,
+      });
+    }
+    cursor = next;
+  }
+  return segs;
+}
+
+function buildWeekSegments(start: Date, end: Date, dayPx: number): WeekSeg[] {
+  const segs: WeekSeg[] = [];
+  let cursor = startOfISOWeek(start);
+  while (cursor.getTime() <= end.getTime()) {
+    const next = addDays(cursor, 7);
+    const segStart = cursor < start ? start : cursor;
+    const segEnd = next > addDays(end, 1) ? addDays(end, 1) : next;
+    const days = diffDays(segStart, segEnd);
+    if (days > 0) {
+      segs.push({
+        key: `${cursor.getFullYear()}-${isoWeekNumber(cursor)}-${cursor.getMonth()}`,
+        label: `W${isoWeekNumber(cursor)}`,
+        offsetPx: diffDays(start, segStart) * dayPx,
+        widthPx: days * dayPx,
+      });
+    }
+    cursor = next;
+  }
+  return segs;
+}
+
+// ─────────────── 行モデル ───────────────
+type Row =
+  | { kind: "milestone-track"; tasks: WbsTask[] }
+  | {
+      kind: "phase";
+      phase: PhaseMeta;
+      colorSet: PhaseColorSet;
+      span: { start: Date; end: Date };
+      progress: number;
+    }
+  | {
+      kind: "epic";
+      id: string;
+      name: string;
+      phaseId: string;
+      colorSet: PhaseColorSet;
+      span: { start: Date; end: Date };
+      progress: number;
+    }
+  | {
+      kind: "task";
+      task: WbsTask;
+      colorSet: PhaseColorSet;
+      indent: 1 | 2;
+    };
+
+function rowHeightOf(row: Row): number {
+  if (row.kind === "milestone-track") {
+    return MILESTONE_ROW_H;
+  }
+  if (row.kind === "phase") {
+    return PHASE_ROW_H;
+  }
+  if (row.kind === "epic") {
+    return EPIC_ROW_H;
+  }
+  return TASK_ROW_H;
+}
+
+function rowKey(row: Row, idx: number): string {
+  if (row.kind === "milestone-track") {
+    return `__ms__${idx}`;
+  }
+  if (row.kind === "phase") {
+    return `phase-${row.phase.id}`;
+  }
+  if (row.kind === "epic") {
+    return `epic-${row.id}`;
+  }
+  return `task-${row.task.id}`;
+}
+
+// ─────────────── コンポーネント本体 ───────────────
 export function GanttChart({
   tasks,
   phases,
@@ -89,740 +274,710 @@ export function GanttChart({
   fitSignal,
   readOnly,
   onTaskClick,
-  onDateChange,
-  onMoveTask,
-  onReorderTask,
   onPhaseEdit,
 }: GanttChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [editingPhase, setEditingPhase] = useState<{
     id: string;
     field: "label" | "goal";
   } | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [ganttHeight, setGanttHeight] = useState(0);
-  const [columnWidthOverride, setColumnWidthOverride] = useState<number | null>(
-    null,
-  );
+  const [dayPxOverride, setDayPxOverride] = useState<number | null>(null);
 
-  // ドラッグ&ドロップ並び替えの状態。連続発火する dragover で再レンダリングを
-  // 起こさないよう state ではなく ref で保持し、インジケーターは DOM 直接操作で描画する。
-  const draggedIdRef = useRef<string | null>(null);
-  const dropTargetRef = useRef<{
-    el: HTMLElement;
-    position: "before" | "after";
-  } | null>(null);
-
-  const clearDropIndicator = useCallback(() => {
-    const current = dropTargetRef.current;
-    if (current) {
-      current.el.classList.remove("wbs-drop-before", "wbs-drop-after");
-      dropTargetRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    const element = wrapperRef.current;
-    if (!element) {
-      return;
-    }
-    const updateHeight = () => {
-      const available = element.clientHeight - HEADER_HEIGHT - HSCROLL_HEIGHT;
-      setGanttHeight(Math.max(available, MIN_GANTT_HEIGHT));
-    };
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  const toggleCollapse = useCallback((phaseId: string) => {
+  const toggle = useCallback((id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(phaseId)) {
-        next.delete(phaseId);
+      if (next.has(id)) {
+        next.delete(id);
       } else {
-        next.add(phaseId);
+        next.add(id);
       }
       return next;
     });
   }, []);
 
-  const wbsById = useMemo(() => {
-    const map = new Map<string, WbsTask>();
-    for (const t of tasks) {
-      map.set(t.id, t);
-    }
-    return map;
+  const { timelineStart, timelineEnd, totalDays } = useMemo(() => {
+    const r = rangeOf(tasks);
+    const today = startOfDay(new Date());
+    const baseStart = r ? r.start : today;
+    const baseEnd = r ? r.end : addDays(today, 30);
+    const start = startOfMonth(addDays(baseStart, -TIMELINE_PAD_DAYS));
+    const end = endOfMonth(addDays(baseEnd, TIMELINE_PAD_DAYS));
+    return {
+      timelineStart: start,
+      timelineEnd: end,
+      totalDays: Math.max(diffDays(start, end) + 1, 1),
+    };
   }, [tasks]);
 
-  const phaseIndex = useMemo(() => {
-    const map = new Map<string, number>();
-    phases.forEach((p, i) => map.set(p.id, i));
-    return map;
-  }, [phases]);
+  const dayPx = dayPxOverride ?? DAY_PX_BY_ZOOM[zoom] ?? 6;
+  const totalWidth = totalDays * dayPx;
 
-  const ganttTasks = useMemo<Task[]>(() => {
-    const result: Task[] = [];
+  useEffect(() => {
+    setDayPxOverride(null);
+  }, [zoom]);
 
-    // 1) 上部マイルストーントラック（合成フェーズ）。全 milestone タスクを集約。
+  useEffect(() => {
+    if (fitSignal === undefined) {
+      return;
+    }
+    const el = containerRef.current;
+    if (!el) {
+      return;
+    }
+    const available = el.clientWidth - LIST_WIDTH - 24;
+    if (available <= 0 || totalDays <= 0) {
+      return;
+    }
+    setDayPxOverride(Math.max(available / totalDays, 0.5));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitSignal]);
+
+  const monthSegments = useMemo(
+    () => buildMonthSegments(timelineStart, timelineEnd, dayPx),
+    [timelineStart, timelineEnd, dayPx],
+  );
+  const showWeeks = zoom !== "year";
+  const weekSegments = useMemo(
+    () =>
+      showWeeks ? buildWeekSegments(timelineStart, timelineEnd, dayPx) : [],
+    [timelineStart, timelineEnd, dayPx, showWeeks],
+  );
+
+  const rows: Row[] = useMemo(() => {
+    const result: Row[] = [];
     const milestones = tasks.filter((t) => t.kind === "milestone");
     if (milestones.length > 0) {
-      const trackStart = new Date(
-        Math.min(...milestones.map((t) => t.start.getTime())),
-      );
-      const trackEnd = new Date(
-        Math.max(...milestones.map((t) => t.end.getTime())),
-      );
-      result.push({
-        id: MILESTONE_TRACK_ID,
-        name: "マイルストーン",
-        start: trackStart,
-        end: ensureRange(trackStart, trackEnd),
-        progress: 0,
-        type: "project",
-        hideChildren: false,
-        isDisabled: true,
-        // バーを描画しない（行のみ確保し、子のダイヤを横一列に並べる）。
-        styles: {
-          backgroundColor: "rgba(0,0,0,0)",
-          backgroundSelectedColor: "rgba(0,0,0,0)",
-          progressColor: "rgba(0,0,0,0)",
-          progressSelectedColor: "rgba(0,0,0,0)",
-        },
-      });
-      for (const m of milestones) {
-        result.push({
-          id: m.id,
-          name: m.name,
-          start: m.start,
-          end: m.start,
-          progress: 100,
-          type: "milestone",
-          project: MILESTONE_TRACK_ID,
-          isDisabled: readOnly,
-          styles: {
-            backgroundColor: MILESTONE_COLOR,
-            backgroundSelectedColor: MILESTONE_COLOR,
-            progressColor: MILESTONE_COLOR,
-            progressSelectedColor: MILESTONE_COLOR,
-          },
-        });
-      }
+      result.push({ kind: "milestone-track", tasks: milestones });
     }
-
-    // 2) 各フェーズの行＋エピック行＋タスク行。milestone は上部トラックに集約済みなので除外。
     for (let pi = 0; pi < phases.length; pi++) {
       const phase = phases[pi];
-      const colorSet = PHASE_BAR_COLORS[pi % PHASE_BAR_COLORS.length];
-
+      const colorSet = PHASE_COLORS[pi % PHASE_COLORS.length];
       const phaseTasks = tasks.filter(
         (t) => t.phase === phase.id && t.kind !== "milestone",
       );
       if (phaseTasks.length === 0) {
         continue;
       }
-
-      const phaseStart = new Date(
-        Math.min(...phaseTasks.map((t) => t.start.getTime())),
-      );
-      const phaseEnd = new Date(
-        Math.max(...phaseTasks.map((t) => t.end.getTime())),
-      );
+      const phaseRange = rangeOf(phaseTasks)!;
       const phaseProgress = Math.round(
         phaseTasks.reduce((s, t) => s + t.progress, 0) / phaseTasks.length,
       );
-      const phaseCollapsed = collapsed.has(phase.id);
-
       result.push({
-        id: phase.id,
-        name: phase.label,
-        start: phaseStart,
-        end: ensureRange(phaseStart, phaseEnd),
+        kind: "phase",
+        phase,
+        colorSet,
+        span: phaseRange,
         progress: phaseProgress,
-        type: "project",
-        hideChildren: phaseCollapsed,
-        isDisabled: readOnly,
-        styles: {
-          backgroundColor: colorSet.phaseBg,
-          backgroundSelectedColor: colorSet.phaseBg,
-          progressColor: colorSet.main,
-          progressSelectedColor: colorSet.main,
-        },
       });
-
-      if (phaseCollapsed) {
+      if (collapsed.has(phase.id)) {
         continue;
       }
-
-      const epicGroups = groupByEpic(phaseTasks);
-
-      for (const group of epicGroups) {
-        if (group.id) {
-          const epicStart = new Date(
-            Math.min(...group.tasks.map((t) => t.start.getTime())),
-          );
-          const epicEnd = new Date(
-            Math.max(...group.tasks.map((t) => t.end.getTime())),
-          );
+      const epics = groupByEpic(phaseTasks);
+      for (const epic of epics) {
+        if (epic.id) {
+          const epicRange = rangeOf(epic.tasks)!;
           const epicProgress = Math.round(
-            group.tasks.reduce((s, t) => s + t.progress, 0) /
-              group.tasks.length,
+            epic.tasks.reduce((s, t) => s + t.progress, 0) / epic.tasks.length,
           );
-          const epicCollapsed = collapsed.has(group.id);
-
           result.push({
-            id: group.id,
-            name: group.name,
-            start: epicStart,
-            end: ensureRange(epicStart, epicEnd),
+            kind: "epic",
+            id: epic.id,
+            name: epic.name,
+            phaseId: phase.id,
+            colorSet,
+            span: epicRange,
             progress: epicProgress,
-            type: "project",
-            project: phase.id,
-            hideChildren: epicCollapsed,
-            isDisabled: readOnly,
-            styles: {
-              backgroundColor: colorSet.epicBg,
-              backgroundSelectedColor: colorSet.epicBg,
-              progressColor: colorSet.main,
-              progressSelectedColor: colorSet.main,
-            },
           });
-
-          if (epicCollapsed) {
+          if (collapsed.has(epic.id)) {
             continue;
           }
-        }
-
-        for (const t of group.tasks) {
-          result.push({
-            id: t.id,
-            name: formatBarLabel(t),
-            start: t.start,
-            end: ensureRange(t.start, t.end),
-            progress: t.progress,
-            type: "task",
-            project: group.id ?? phase.id,
-            isDisabled: readOnly,
-            styles: {
-              backgroundColor: colorSet.taskBg,
-              backgroundSelectedColor: colorSet.taskBg,
-              progressColor: colorSet.main,
-              progressSelectedColor: colorSet.main,
-            },
-          });
+          for (const task of epic.tasks) {
+            result.push({ kind: "task", task, colorSet, indent: 2 });
+          }
+        } else {
+          for (const task of epic.tasks) {
+            result.push({ kind: "task", task, colorSet, indent: 1 });
+          }
         }
       }
     }
-
     return result;
-  }, [tasks, phases, readOnly, collapsed]);
+  }, [tasks, phases, collapsed]);
 
-  // フェーズ／エピック判定用のセット。
-  const phaseIdSet = useMemo(() => new Set(phases.map((p) => p.id)), [phases]);
+  const today = startOfDay(new Date());
+  const todayInRange =
+    today.getTime() >= timelineStart.getTime() &&
+    today.getTime() <= timelineEnd.getTime();
+  const todayPx = diffDays(timelineStart, today) * dayPx + dayPx / 2;
 
-  const viewMode = resolveViewMode(zoom);
-  const defaultColumnWidth = defaultColumnWidthFor(zoom);
-  const columnWidth = columnWidthOverride ?? defaultColumnWidth;
-
-  // ズーム変更時は手動オーバーライドをリセットする。
-  useEffect(() => {
-    setColumnWidthOverride(null);
-  }, [zoom]);
-
-  // 全体表示要求: 表示可能なガント領域とタスク全体の日付レンジから列幅を逆算する。
-  useEffect(() => {
-    if (fitSignal === undefined) {
-      return;
-    }
-    const el = wrapperRef.current;
-    if (!el) {
-      return;
-    }
-    const available = Math.max(
-      el.clientWidth - parseInt(LIST_WIDTH, 10) - 24,
-      200,
-    );
-    const range = computeDateRange(tasks);
-    if (!range) {
-      return;
-    }
-    const columns = countColumns(range.start, range.end, zoom);
-    if (columns <= 0) {
-      return;
-    }
-    const next = Math.max(Math.floor(available / columns), 24);
-    setColumnWidthOverride(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitSignal]);
-
-  const TaskListHeaderRow: FC<{
-    headerHeight: number;
-    rowWidth: string;
-    fontFamily: string;
-    fontSize: string;
-  }> = ({ headerHeight, rowWidth }) => (
-    <div
-      style={{ height: headerHeight, width: rowWidth }}
-      className="flex items-center border-b border-[#E5E5EA] bg-white px-4 text-[11px] font-medium uppercase tracking-wider text-[#8E8E93]"
-    >
-      <div className="flex-1">タスク</div>
-      <div className="w-24 text-center">ステータス</div>
-      <div className="w-20 text-right">担当</div>
-    </div>
+  const xOf = useCallback(
+    (d: Date) => diffDays(timelineStart, d) * dayPx,
+    [timelineStart, dayPx],
   );
 
-  const TaskListBody: FC<{
-    rowHeight: number;
-    rowWidth: string;
-    fontFamily: string;
-    fontSize: string;
-    locale: string;
-    tasks: Task[];
-    selectedTaskId: string;
-    setSelectedTask: (taskId: string) => void;
-    onExpanderClick: (task: Task) => void;
-  }> = ({
-    rowHeight,
-    rowWidth,
-    tasks: rows,
-    selectedTaskId,
-    setSelectedTask,
-  }) => (
-    <div style={{ width: rowWidth }} className="bg-white">
-      {rows.map((row, rowIndex) => {
-        // 1) 合成マイルストーントラックの行
-        if (row.id === MILESTONE_TRACK_ID) {
-          return (
-            <div
-              key={row.id}
-              style={{
-                height: rowHeight,
-                backgroundColor: "#F2F2F7",
-                borderLeftColor: MILESTONE_COLOR,
-                borderLeftWidth: 4,
-              }}
-              className="flex items-center border-b border-l-4 border-[#E5E5EA] pl-3 pr-4"
-            >
-              <span
-                aria-hidden
-                className="mr-2 inline-block h-2.5 w-2.5 rotate-45"
-                style={{ backgroundColor: MILESTONE_COLOR }}
-              />
-              <span className="truncate text-[12px] font-semibold uppercase tracking-wide text-[#5856D6]">
-                マイルストーン
-              </span>
-            </div>
-          );
-        }
+  const monthBoundaryPxs = useMemo(() => {
+    const arr: number[] = [];
+    let cursor = startOfMonth(addMonths(timelineStart, 1));
+    while (cursor.getTime() <= timelineEnd.getTime()) {
+      arr.push(diffDays(timelineStart, cursor) * dayPx);
+      cursor = startOfMonth(addMonths(cursor, 1));
+    }
+    return arr;
+  }, [timelineStart, timelineEnd, dayPx]);
 
-        // 2) フェーズ行（type=project かつ phases に存在）
-        if (row.type === "project" && phaseIdSet.has(row.id)) {
-          const meta = phases.find((p) => p.id === row.id);
-          const colorSet =
-            PHASE_BAR_COLORS[
-              (phaseIndex.get(row.id) ?? 0) % PHASE_BAR_COLORS.length
-            ];
-          const isCollapsed = collapsed.has(row.id);
-          return (
-            <div
-              key={row.id}
-              style={{
-                height: rowHeight,
-                borderLeftColor: colorSet.main,
-                borderLeftWidth: 4,
-                backgroundColor: colorSet.phaseBg,
-              }}
-              className="flex cursor-pointer items-center border-b border-l-4 border-[#E5E5EA] pl-3 pr-4 transition hover:brightness-95"
-              onClick={() => {
-                toggleCollapse(row.id);
-              }}
-            >
-              <span
-                className="mr-2 inline-block text-[11px] text-[#1C1C1E] transition-transform"
-                style={{
-                  transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-                }}
-              >
-                ▼
-              </span>
-              <div className="flex min-w-0 flex-1 flex-col leading-tight">
-                {!readOnly &&
-                editingPhase?.id === row.id &&
-                editingPhase.field === "label" ? (
-                  <InlineEdit
-                    value={meta?.label ?? row.name}
-                    ariaLabel="フェーズ名"
-                    className="w-full rounded border border-[#007AFF] bg-white px-1 py-0.5 text-[13px] font-semibold text-[#1C1C1E] focus:outline-none"
-                    onCommit={(value) => {
-                      const trimmed = value.trim();
-                      if (trimmed) {
-                        onPhaseEdit(row.id, { label: trimmed });
-                      }
-                      setEditingPhase(null);
-                    }}
-                    onCancel={() => setEditingPhase(null)}
-                  />
-                ) : (
-                  <span
-                    className={`truncate text-[13px] font-semibold text-[#1C1C1E] ${
-                      readOnly
-                        ? ""
-                        : "cursor-text rounded px-0.5 hover:bg-white/60"
-                    }`}
-                    onClick={(e) => {
-                      if (readOnly) {
-                        return;
-                      }
-                      e.stopPropagation();
-                      setEditingPhase({ id: row.id, field: "label" });
-                    }}
-                  >
-                    {meta?.label ?? row.name}
-                  </span>
-                )}
-                {!readOnly &&
-                editingPhase?.id === row.id &&
-                editingPhase.field === "goal" ? (
-                  <InlineEdit
-                    value={meta?.goal ?? ""}
-                    ariaLabel="フェーズの目標"
-                    placeholder="目標を入力"
-                    className="mt-0.5 w-full rounded border border-[#007AFF] bg-white px-1 py-0.5 text-[11px] text-[#8E8E93] focus:outline-none"
-                    onCommit={(value) => {
-                      onPhaseEdit(row.id, { goal: value.trim() });
-                      setEditingPhase(null);
-                    }}
-                    onCancel={() => setEditingPhase(null)}
-                  />
-                ) : meta?.goal ? (
-                  <span
-                    className={`truncate text-[11px] text-[#8E8E93] ${
-                      readOnly
-                        ? ""
-                        : "cursor-text rounded px-0.5 hover:bg-white/60"
-                    }`}
-                    onClick={(e) => {
-                      if (readOnly) {
-                        return;
-                      }
-                      e.stopPropagation();
-                      setEditingPhase({ id: row.id, field: "goal" });
-                    }}
-                  >
-                    （{meta.goal}）
-                  </span>
-                ) : readOnly ? null : (
-                  <span
-                    className="cursor-text truncate text-[11px] text-[#C7C7CC] hover:text-[#8E8E93]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingPhase({ id: row.id, field: "goal" });
-                    }}
-                  >
-                    ＋ 目標を追加
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        }
-
-        // 3) エピック行（type=project かつ phases に無い＝中間階層）
-        if (row.type === "project") {
-          const parentPhaseId = row.project;
-          const colorSet =
-            parentPhaseId && phaseIndex.has(parentPhaseId)
-              ? PHASE_BAR_COLORS[
-                  (phaseIndex.get(parentPhaseId) ?? 0) % PHASE_BAR_COLORS.length
-                ]
-              : PHASE_BAR_COLORS[0];
-          const isCollapsed = collapsed.has(row.id);
-          return (
-            <div
-              key={row.id}
-              style={{
-                height: rowHeight,
-                borderLeftColor: colorSet.main,
-                borderLeftWidth: 2,
-                backgroundColor: "#FAFAFC",
-              }}
-              className="flex cursor-pointer items-center border-b border-l-2 border-[#E5E5EA] pl-8 pr-4 transition hover:bg-[#F2F2F7]"
-              onClick={() => {
-                toggleCollapse(row.id);
-              }}
-            >
-              <span
-                className="mr-2 inline-block text-[10px] text-[#8E8E93] transition-transform"
-                style={{
-                  transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-                }}
-              >
-                ▼
-              </span>
-              <span className="truncate text-[12px] font-semibold text-[#1C1C1E]">
-                {row.name}
-              </span>
-            </div>
-          );
-        }
-
-        // 4) タスク／マイルストーンの葉行
-        const wbs = wbsById.get(row.id);
-        if (!wbs) {
-          return null;
-        }
-        const isMilestoneRow = row.project === MILESTONE_TRACK_ID;
-        const indentPx = isMilestoneRow ? 32 : wbs.epic ? 56 : 32;
-        const selected = selectedTaskId === row.id;
-
-        // 同一フェーズ内の前後行を確認し、↑↓ボタンの表示可否を決める。
-        // マイルストーントラックは並び替え不可。
-        const sameGroupNeighbors = (other: Task | undefined) => {
-          if (!other) {
-            return false;
-          }
-          if (other.type === "project") {
-            return false;
-          }
-          if (other.project !== row.project) {
-            return false;
-          }
-          return true;
-        };
-        const isFirstInGroup = !sameGroupNeighbors(rows[rowIndex - 1]);
-        const isLastInGroup = !sameGroupNeighbors(rows[rowIndex + 1]);
-        const draggable = !readOnly && !isMilestoneRow;
-        return (
+  return (
+    <div ref={containerRef} className="relative h-full overflow-auto bg-white">
+      <div className="relative" style={{ minWidth: LIST_WIDTH + totalWidth }}>
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: `${LIST_WIDTH}px ${totalWidth}px`,
+          }}
+        >
+          {/* ===== 固定ヘッダー ===== */}
           <div
-            key={row.id}
-            style={{
-              height: rowHeight,
-              paddingLeft: indentPx,
-            }}
-            draggable={draggable}
-            className={`flex cursor-pointer items-center border-b border-[#E5E5EA] pr-4 transition ${
-              selected ? "bg-[#E5F1FF]" : "hover:bg-[#F2F2F7]"
-            }`}
-            onClick={() => {
-              setSelectedTask(row.id);
-              onTaskClick(wbs);
-            }}
-            onDragStart={(e) => {
-              if (!draggable) {
-                return;
-              }
-              draggedIdRef.current = row.id;
-              e.dataTransfer.effectAllowed = "move";
-              e.dataTransfer.setData("text/plain", row.id);
-              e.currentTarget.classList.add("wbs-dragging");
-            }}
-            onDragOver={(e) => {
-              const draggedId = draggedIdRef.current;
-              if (!draggedId || draggedId === row.id) {
-                return;
-              }
-              const dragged = wbsById.get(draggedId);
-              if (!dragged || dragged.phase !== wbs.phase) {
-                clearDropIndicator();
-                return;
-              }
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              const rect = e.currentTarget.getBoundingClientRect();
-              const position: "before" | "after" =
-                e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-              const current = dropTargetRef.current;
-              if (
-                current &&
-                current.el === e.currentTarget &&
-                current.position === position
-              ) {
-                return;
-              }
-              clearDropIndicator();
-              e.currentTarget.classList.add(
-                position === "before" ? "wbs-drop-before" : "wbs-drop-after",
-              );
-              dropTargetRef.current = {
-                el: e.currentTarget,
-                position,
-              };
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              const draggedId = draggedIdRef.current;
-              const current = dropTargetRef.current;
-              clearDropIndicator();
-              draggedIdRef.current = null;
-              if (draggedId && current) {
-                onReorderTask(draggedId, row.id, current.position);
-              }
-            }}
-            onDragEnd={(e) => {
-              e.currentTarget.classList.remove("wbs-dragging");
-              clearDropIndicator();
-              draggedIdRef.current = null;
-            }}
+            className="sticky left-0 top-0 z-40 border-b border-r border-gray-200 bg-white"
+            style={{ height: HEADER_TOTAL_H }}
           >
-            {!readOnly && !isMilestoneRow && (
-              <div className="mr-1.5 flex w-[18px] shrink-0 flex-col items-center justify-center gap-px">
-                {!isFirstInGroup && (
-                  <button
-                    type="button"
-                    aria-label="上に移動"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMoveTask(row.id, "up");
-                    }}
-                    className="flex h-[13px] w-[18px] items-center justify-center rounded text-[10px] leading-none text-[#C7C7CC] transition hover:bg-[#E5E5EA] hover:text-[#1C1C1E]"
+            <div
+              className="flex items-end gap-2 border-b border-gray-100 px-4 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500"
+              style={{ height: MONTH_HEADER_H + WEEK_HEADER_H }}
+            >
+              <div className="flex-1">タスク</div>
+              <div className="w-20 text-center">ステータス</div>
+              <div className="w-16 text-right">担当</div>
+            </div>
+            <div
+              className="flex items-center px-4 text-[10px] font-medium text-gray-500"
+              style={{ height: LEGEND_H }}
+            >
+              凡例
+            </div>
+          </div>
+
+          <div
+            className="sticky top-0 z-30 border-b border-gray-200 bg-white"
+            style={{ height: HEADER_TOTAL_H }}
+          >
+            <div
+              className="relative border-b border-gray-100"
+              style={{ height: MONTH_HEADER_H }}
+            >
+              {monthSegments.map((seg) => (
+                <div
+                  key={seg.key}
+                  className="absolute top-0 flex h-full items-center border-r border-gray-200 bg-gray-50 px-2 text-[12px] font-semibold text-gray-700"
+                  style={{ left: seg.offsetPx, width: seg.widthPx }}
+                >
+                  {seg.label}
+                </div>
+              ))}
+            </div>
+            <div
+              className="relative border-b border-gray-100"
+              style={{ height: WEEK_HEADER_H }}
+            >
+              {showWeeks &&
+                weekSegments.map((seg) => (
+                  <div
+                    key={seg.key}
+                    className="absolute top-0 flex h-full items-center justify-center border-r border-gray-100 text-[10px] text-gray-500"
+                    style={{ left: seg.offsetPx, width: seg.widthPx }}
                   >
-                    ↑
-                  </button>
-                )}
-                {!isLastInGroup && (
-                  <button
-                    type="button"
-                    aria-label="下に移動"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMoveTask(row.id, "down");
-                    }}
-                    className="flex h-[13px] w-[18px] items-center justify-center rounded text-[10px] leading-none text-[#C7C7CC] transition hover:bg-[#E5E5EA] hover:text-[#1C1C1E]"
+                    {seg.label}
+                  </div>
+                ))}
+            </div>
+            <div
+              className="relative flex items-center gap-4 px-3 text-[11px] text-gray-600"
+              style={{ height: LEGEND_H }}
+            >
+              {phases.map((p, i) => {
+                const c = PHASE_COLORS[i % PHASE_COLORS.length];
+                return (
+                  <span
+                    key={p.id}
+                    className="flex items-center gap-1.5 whitespace-nowrap"
                   >
-                    ↓
-                  </button>
-                )}
-              </div>
-            )}
-            <div className="flex flex-1 items-center gap-2 overflow-hidden text-[13px] text-[#1C1C1E]">
-              {wbs.kind === "milestone" && (
+                    <span
+                      className="inline-block h-3 w-5 rounded-sm"
+                      style={{
+                        backgroundColor: c.light,
+                        border: `1px solid ${c.main}`,
+                      }}
+                    />
+                    <span
+                      className="truncate text-[11px] font-medium"
+                      style={{ color: c.text, maxWidth: 140 }}
+                    >
+                      {p.label}
+                    </span>
+                  </span>
+                );
+              })}
+              <span className="ml-auto flex items-center gap-1.5 whitespace-nowrap">
                 <span
                   aria-hidden
-                  className="inline-block h-2.5 w-2.5 shrink-0 rotate-45"
+                  className="inline-block h-2.5 w-2.5 rotate-45"
                   style={{ backgroundColor: MILESTONE_COLOR }}
                 />
-              )}
-              <span className="truncate">{wbs.name}</span>
-            </div>
-            <div className="flex w-24 justify-center">
-              <StatusBadge status={wbs.status} />
-            </div>
-            <div className="w-20 truncate text-right text-[12px] text-[#8E8E93]">
-              {wbs.assignee || "—"}
+                マイルストーン
+              </span>
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="inline-block h-4 w-[2px] bg-red-500" />
+                今日
+              </span>
             </div>
           </div>
-        );
-      })}
-    </div>
-  );
 
-  const TooltipBody: FC<{
-    task: Task;
-    fontSize: string;
-    fontFamily: string;
-  }> = ({ task }) => {
-    if (task.id === MILESTONE_TRACK_ID) {
-      return null;
-    }
-    if (task.type === "project") {
-      const meta = phases.find((p) => p.id === task.id);
-      const label = meta?.label ?? task.name;
-      const isEpic = !meta;
-      return (
-        <div className="rounded-xl border border-[#E5E5EA] bg-white p-3 text-xs shadow-lg">
-          <div className="font-semibold text-[#1C1C1E]">{label}</div>
-          {isEpic && (
-            <div className="mt-1 text-[10px] uppercase tracking-wide text-[#5856D6]">
-              エピック
+          {/* ===== 本体 ===== */}
+          {rows.map((row, idx) => {
+            const height = rowHeightOf(row);
+            return (
+              <Fragment key={rowKey(row, idx)}>
+                <LeftCell
+                  row={row}
+                  height={height}
+                  collapsed={collapsed}
+                  onToggle={toggle}
+                  onTaskClick={onTaskClick}
+                  onPhaseEdit={onPhaseEdit}
+                  readOnly={readOnly}
+                  editingPhase={editingPhase}
+                  setEditingPhase={setEditingPhase}
+                />
+                <RightCell
+                  row={row}
+                  height={height}
+                  totalWidth={totalWidth}
+                  monthBoundaryPxs={monthBoundaryPxs}
+                  xOf={xOf}
+                  dayPx={dayPx}
+                  onTaskClick={onTaskClick}
+                />
+              </Fragment>
+            );
+          })}
+        </div>
+
+        {/* 今日の縦線（タイムライン領域全体に貫通） */}
+        {todayInRange && (
+          <>
+            <div
+              className="pointer-events-none absolute z-20"
+              style={{
+                left: LIST_WIDTH + todayPx,
+                top: HEADER_TOTAL_H,
+                bottom: 0,
+                width: 2,
+                backgroundColor: "#EF4444",
+              }}
+            />
+            <div
+              className="pointer-events-none absolute z-30 whitespace-nowrap rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow"
+              style={{
+                left: LIST_WIDTH + todayPx - 16,
+                top: HEADER_TOTAL_H - 8,
+              }}
+            >
+              今日
             </div>
-          )}
-          {meta?.goal && <div className="mt-1 text-[#8E8E93]">{meta.goal}</div>}
-          <div className="mt-1 text-[#8E8E93]">
-            {formatShortDate(task.start)} – {formatShortDate(task.end)}
-          </div>
-        </div>
-      );
-    }
-    const wbs = wbsById.get(task.id);
-    if (!wbs) {
-      return null;
-    }
-    return (
-      <div className="min-w-[200px] space-y-1.5 rounded-xl border border-[#E5E5EA] bg-white p-3 text-xs shadow-lg">
-        <div className="font-semibold text-[#1C1C1E]">{wbs.name}</div>
-        <div className="text-[#8E8E93]">{formatBarLabel(wbs)}</div>
-        <div className="flex items-center gap-2 text-[#8E8E93]">
-          <span>ステータス</span>
-          <StatusBadge status={wbs.status} />
-        </div>
-        <div className="text-[#8E8E93]">担当: {wbs.assignee || "—"}</div>
-        {wbs.kind !== "milestone" && (
-          <div className="text-[#8E8E93]">進捗: {wbs.progress}%</div>
+          </>
         )}
       </div>
-    );
-  };
 
-  if (ganttTasks.length === 0) {
-    return (
-      <div
-        ref={wrapperRef}
-        className="gantt-wrapper h-full overflow-auto bg-white"
-      >
-        <div className="flex h-64 items-center justify-center text-sm text-[#8E8E93]">
+      {rows.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
           フィルタ条件に一致するタスクがありません
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────── 左セル ───────────────
+interface LeftCellProps {
+  row: Row;
+  height: number;
+  collapsed: Set<string>;
+  onToggle: (id: string) => void;
+  onTaskClick: (task: WbsTask) => void;
+  onPhaseEdit: (id: string, patch: { label?: string; goal?: string }) => void;
+  readOnly: boolean;
+  editingPhase: { id: string; field: "label" | "goal" } | null;
+  setEditingPhase: (p: { id: string; field: "label" | "goal" } | null) => void;
+}
+
+const LeftCell: FC<LeftCellProps> = ({
+  row,
+  height,
+  collapsed,
+  onToggle,
+  onTaskClick,
+  onPhaseEdit,
+  readOnly,
+  editingPhase,
+  setEditingPhase,
+}) => {
+  if (row.kind === "milestone-track") {
+    return (
+      <div
+        className="sticky left-0 z-10 flex items-center border-b border-r border-gray-200 px-4"
+        style={{
+          height,
+          background: "#F5F3FF",
+          borderLeft: `4px solid ${MILESTONE_COLOR}`,
+        }}
+      >
+        <span
+          aria-hidden
+          className="mr-2 inline-block h-3 w-3 rotate-45"
+          style={{ backgroundColor: MILESTONE_COLOR }}
+        />
+        <span className="text-[12px] font-bold uppercase tracking-wider text-violet-700">
+          マイルストーン
+        </span>
       </div>
     );
   }
 
+  if (row.kind === "phase") {
+    const isCollapsed = collapsed.has(row.phase.id);
+    return (
+      <div
+        className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 px-3 transition hover:brightness-95"
+        style={{
+          height,
+          background: row.colorSet.soft,
+          borderLeft: `4px solid ${row.colorSet.main}`,
+        }}
+        onClick={() => onToggle(row.phase.id)}
+      >
+        <span
+          className="mr-2 inline-block text-[11px] text-gray-600 transition-transform"
+          style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+        >
+          ▼
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col leading-tight">
+          {!readOnly &&
+          editingPhase?.id === row.phase.id &&
+          editingPhase.field === "label" ? (
+            <InlineEdit
+              value={row.phase.label}
+              ariaLabel="フェーズ名"
+              onCommit={(value) => {
+                const trimmed = value.trim();
+                if (trimmed) {
+                  onPhaseEdit(row.phase.id, { label: trimmed });
+                }
+                setEditingPhase(null);
+              }}
+              onCancel={() => setEditingPhase(null)}
+              className="w-full rounded border border-indigo-400 bg-white px-1 py-0.5 text-[13px] font-bold focus:outline-none"
+            />
+          ) : (
+            <span
+              className={`truncate text-[13px] font-bold ${
+                readOnly ? "" : "cursor-text rounded px-0.5 hover:bg-white/70"
+              }`}
+              style={{ color: row.colorSet.text }}
+              onClick={(e) => {
+                if (readOnly) {
+                  return;
+                }
+                e.stopPropagation();
+                setEditingPhase({ id: row.phase.id, field: "label" });
+              }}
+            >
+              {row.phase.label}
+            </span>
+          )}
+          {row.phase.goal && (
+            <span
+              className="truncate text-[10px] text-gray-500"
+              style={{ maxWidth: 280 }}
+            >
+              {row.phase.goal}
+            </span>
+          )}
+        </div>
+        <span className="ml-2 shrink-0 text-[11px] font-semibold text-gray-600">
+          {row.progress}%
+        </span>
+      </div>
+    );
+  }
+
+  if (row.kind === "epic") {
+    const isCollapsed = collapsed.has(row.id);
+    return (
+      <div
+        className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 transition hover:bg-gray-50"
+        style={{
+          height,
+          paddingLeft: 28,
+          paddingRight: 12,
+          background: "#FAFAFB",
+          borderLeft: `2px solid ${row.colorSet.main}`,
+        }}
+        onClick={() => onToggle(row.id)}
+      >
+        <span
+          className="mr-2 inline-block text-[10px] text-gray-500 transition-transform"
+          style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+        >
+          ▼
+        </span>
+        <span className="flex-1 truncate text-[12px] font-semibold text-gray-700">
+          {row.name}
+        </span>
+        <span className="ml-2 shrink-0 text-[10px] text-gray-500">
+          {row.progress}%
+        </span>
+      </div>
+    );
+  }
+
+  // task row
+  const t = row.task;
+  const isDone = t.status === "done";
+  const indentPx = row.indent === 2 ? 52 : 32;
   return (
     <div
-      ref={wrapperRef}
-      className="gantt-wrapper h-full overflow-auto bg-white"
+      className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 bg-white pr-3 transition hover:bg-gray-50"
+      style={{
+        height,
+        paddingLeft: indentPx,
+      }}
+      onClick={() => onTaskClick(t)}
     >
-      <Gantt
-        tasks={ganttTasks}
-        viewMode={viewMode}
-        columnWidth={columnWidth}
-        listCellWidth={LIST_WIDTH}
-        rowHeight={ROW_HEIGHT}
-        headerHeight={HEADER_HEIGHT}
-        ganttHeight={ganttHeight}
-        barCornerRadius={4}
-        barFill={68}
-        handleWidth={6}
-        todayColor="rgba(255, 149, 0, 0.15)"
-        projectBackgroundColor="#F2F2F7"
-        projectBackgroundSelectedColor="#E5E5EA"
-        projectProgressColor="#C7C7CC"
-        projectProgressSelectedColor="#AEAEB2"
-        milestoneBackgroundColor={MILESTONE_COLOR}
-        milestoneBackgroundSelectedColor="#8E44AD"
-        arrowColor="#C7C7CC"
-        fontFamily='-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif'
-        fontSize="12px"
-        locale="ja-JP"
-        TaskListHeader={TaskListHeaderRow}
-        TaskListTable={TaskListBody}
-        TooltipContent={TooltipBody}
-        onDateChange={(task) => {
-          onDateChange(task.id, task.start, task.end);
-        }}
-        onExpanderClick={(task) => {
-          toggleCollapse(task.id);
-        }}
-        onClick={(task) => {
-          if (task.type === "task" || task.type === "milestone") {
-            const wbs = tasks.find((t) => t.id === task.id);
-            if (wbs) {
-              onTaskClick(wbs);
-            }
-          }
+      <div className="flex flex-1 items-center gap-1.5 overflow-hidden text-[12px] text-gray-800">
+        {isDone && (
+          <span aria-hidden className="shrink-0 text-[11px] text-green-600">
+            ✅
+          </span>
+        )}
+        <span
+          className={`truncate ${isDone ? "text-gray-400 line-through" : ""}`}
+        >
+          {t.name}
+        </span>
+      </div>
+      <div className="flex w-20 justify-center">
+        <span
+          className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASSES[t.status]}`}
+        >
+          {STATUS_LABELS[t.status]}
+        </span>
+      </div>
+      <div className="w-16 truncate text-right text-[11px] text-gray-500">
+        {t.assignee || "—"}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────── 右セル ───────────────
+interface RightCellProps {
+  row: Row;
+  height: number;
+  totalWidth: number;
+  monthBoundaryPxs: number[];
+  xOf: (d: Date) => number;
+  dayPx: number;
+  onTaskClick: (task: WbsTask) => void;
+}
+
+const RightCell: FC<RightCellProps> = ({
+  row,
+  height,
+  totalWidth,
+  monthBoundaryPxs,
+  xOf,
+  dayPx,
+  onTaskClick,
+}) => {
+  return (
+    <div
+      className="relative border-b border-gray-200"
+      style={{
+        height,
+        width: totalWidth,
+        background: row.kind === "milestone-track" ? "#F5F3FF" : "white",
+      }}
+    >
+      {monthBoundaryPxs.map((px) => (
+        <div
+          key={px}
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 top-0 w-px bg-gray-100"
+          style={{ left: px }}
+        />
+      ))}
+
+      {row.kind === "milestone-track" &&
+        row.tasks.map((m) => {
+          const left = xOf(m.start) + dayPx / 2;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onTaskClick(m)}
+              title={`${m.name} (${formatShortDate(m.start)})`}
+              className="absolute flex -translate-x-1/2 flex-col items-center"
+              style={{ left, top: 6 }}
+            >
+              <span
+                aria-hidden
+                className="block h-3.5 w-3.5 rotate-45 shadow"
+                style={{ backgroundColor: MILESTONE_COLOR }}
+              />
+              <span
+                className="mt-1.5 whitespace-nowrap rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 shadow-sm ring-1 ring-violet-100"
+                style={{ marginTop: 8 }}
+              >
+                {m.name}
+              </span>
+              <span className="mt-0.5 text-[9px] text-gray-500">
+                {formatShortDate(m.start)}
+              </span>
+            </button>
+          );
+        })}
+
+      {(row.kind === "phase" || row.kind === "epic") && (
+        <SpanBar
+          start={row.span.start}
+          end={row.span.end}
+          colorSet={row.colorSet}
+          progress={row.progress}
+          xOf={xOf}
+          dayPx={dayPx}
+          height={height}
+          kind={row.kind}
+        />
+      )}
+
+      {row.kind === "task" && (
+        <TaskBar
+          task={row.task}
+          colorSet={row.colorSet}
+          xOf={xOf}
+          dayPx={dayPx}
+          height={height}
+          onTaskClick={onTaskClick}
+        />
+      )}
+    </div>
+  );
+};
+
+function SpanBar({
+  start,
+  end,
+  colorSet,
+  progress,
+  xOf,
+  dayPx,
+  height,
+  kind,
+}: {
+  start: Date;
+  end: Date;
+  colorSet: PhaseColorSet;
+  progress: number;
+  xOf: (d: Date) => number;
+  dayPx: number;
+  height: number;
+  kind: "phase" | "epic";
+}) {
+  const left = xOf(start);
+  const width = Math.max((diffDays(start, end) + 1) * dayPx, 6);
+  const barHeight = kind === "phase" ? 22 : 16;
+  const top = (height - barHeight) / 2;
+  return (
+    <div
+      className="absolute overflow-hidden rounded"
+      style={{
+        left,
+        top,
+        width,
+        height: barHeight,
+        backgroundColor: kind === "phase" ? colorSet.light : "#FFFFFF",
+        border: `1px solid ${colorSet.main}`,
+      }}
+    >
+      <div
+        className="h-full"
+        style={{
+          width: `${Math.min(Math.max(progress, 0), 100)}%`,
+          backgroundColor: colorSet.main,
+          opacity: kind === "phase" ? 0.55 : 0.75,
         }}
       />
     </div>
+  );
+}
+
+function TaskBar({
+  task,
+  colorSet,
+  xOf,
+  dayPx,
+  height,
+  onTaskClick,
+}: {
+  task: WbsTask;
+  colorSet: PhaseColorSet;
+  xOf: (d: Date) => number;
+  dayPx: number;
+  height: number;
+  onTaskClick: (task: WbsTask) => void;
+}) {
+  const left = xOf(task.start);
+  const width = Math.max((diffDays(task.start, task.end) + 1) * dayPx, 6);
+  const barHeight = 20;
+  const top = (height - barHeight) / 2;
+  const isDone = task.status === "done";
+  const progressWidth = Math.min(Math.max(task.progress, 0), 100);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onTaskClick(task);
+      }}
+      title={`${task.name} (${formatShortDate(task.start)} – ${formatShortDate(task.end)})`}
+      className="absolute overflow-hidden rounded transition hover:brightness-95"
+      style={{
+        left,
+        top,
+        width,
+        height: barHeight,
+        backgroundColor: isDone ? colorSet.soft : colorSet.light,
+        border: `1px solid ${colorSet.main}`,
+        opacity: isDone ? 0.7 : 1,
+      }}
+    >
+      <div
+        className="h-full"
+        style={{
+          width: `${progressWidth}%`,
+          backgroundColor: colorSet.main,
+          opacity: 0.85,
+        }}
+      />
+      {isDone && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px]"
+        >
+          ✅
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -832,22 +987,20 @@ function InlineEdit({
   onCancel,
   className,
   ariaLabel,
-  placeholder,
 }: {
   value: string;
   onCommit: (next: string) => void;
   onCancel: () => void;
   className: string;
   ariaLabel: string;
-  placeholder?: string;
 }) {
   const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLInputElement>(null);
   const doneRef = useRef(false);
 
   useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
+    ref.current?.focus();
+    ref.current?.select();
   }, []);
 
   const commit = () => {
@@ -857,7 +1010,6 @@ function InlineEdit({
     doneRef.current = true;
     onCommit(draft);
   };
-
   const cancel = () => {
     if (doneRef.current) {
       return;
@@ -868,11 +1020,10 @@ function InlineEdit({
 
   return (
     <input
-      ref={inputRef}
+      ref={ref}
       type="text"
       value={draft}
       aria-label={ariaLabel}
-      placeholder={placeholder}
       className={className}
       onChange={(e) => setDraft(e.target.value)}
       onClick={(e) => e.stopPropagation()}
@@ -888,133 +1039,4 @@ function InlineEdit({
       onBlur={commit}
     />
   );
-}
-
-function StatusBadge({ status }: { status: TaskStatus }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES[status]}`}
-    >
-      {STATUS_LABELS[status]}
-    </span>
-  );
-}
-
-function formatBarLabel(task: WbsTask): string {
-  if (task.kind === "milestone") {
-    return formatShortDate(task.start);
-  }
-  const start = formatShortDate(task.start);
-  const end = formatShortDate(task.end);
-  return start === end ? start : `${start}-${end}`;
-}
-
-function formatShortDate(d: Date): string {
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-function ensureRange(start: Date, end: Date): Date {
-  if (end.getTime() <= start.getTime()) {
-    const adjusted = new Date(start);
-    adjusted.setDate(adjusted.getDate() + 1);
-    return adjusted;
-  }
-  return end;
-}
-
-/**
- * フェーズ内のタスクをエピック（直上の親）でグルーピングして並べ替える。
- * エピックの出現順は最初のタスクの登場順を維持し、エピック内のタスク順も
- * 元の配列順を保つ（applyOrder で復元された並びを壊さない）。
- * エピック未指定のタスクは末尾にまとめる。
- */
-function resolveViewMode(zoom: ZoomMode): ViewMode {
-  switch (zoom) {
-    case "day":
-      return ViewMode.Day;
-    case "week":
-      return ViewMode.Week;
-    case "month":
-      return ViewMode.Month;
-    case "year":
-      return ViewMode.Year;
-  }
-}
-
-function defaultColumnWidthFor(zoom: ZoomMode): number {
-  switch (zoom) {
-    case "day":
-      return 32;
-    case "week":
-      return 90;
-    case "month":
-      return 200;
-    case "year":
-      return 180;
-  }
-}
-
-function computeDateRange(tasks: WbsTask[]): { start: Date; end: Date } | null {
-  if (tasks.length === 0) {
-    return null;
-  }
-  const startMs = Math.min(...tasks.map((t) => t.start.getTime()));
-  const endMs = Math.max(...tasks.map((t) => t.end.getTime()));
-  return { start: new Date(startMs), end: new Date(endMs) };
-}
-
-function countColumns(start: Date, end: Date, zoom: ZoomMode): number {
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  const totalDays = Math.max(
-    1,
-    Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY) + 1,
-  );
-  switch (zoom) {
-    case "day":
-      return totalDays;
-    case "week":
-      return Math.ceil(totalDays / 7);
-    case "month":
-      return Math.max(
-        1,
-        (end.getFullYear() - start.getFullYear()) * 12 +
-          (end.getMonth() - start.getMonth()) +
-          1,
-      );
-    case "year":
-      return Math.max(1, end.getFullYear() - start.getFullYear() + 1);
-  }
-}
-
-interface EpicGroup {
-  id: string | null;
-  name: string;
-  tasks: WbsTask[];
-}
-
-/**
- * フェーズ内のタスクをエピック（直上の親）でグルーピングする。
- * エピックの出現順はタスクの登場順を維持し、エピック未指定のタスクは末尾に集約。
- */
-function groupByEpic(tasks: WbsTask[]): EpicGroup[] {
-  const order: string[] = [];
-  const map = new Map<string, EpicGroup>();
-  const noEpicKey = "__no_epic__";
-  for (const t of tasks) {
-    const key = t.epic?.id ?? noEpicKey;
-    if (!map.has(key)) {
-      map.set(key, {
-        id: t.epic?.id ?? null,
-        name: t.epic?.name ?? "",
-        tasks: [],
-      });
-      order.push(key);
-    }
-    map.get(key)!.tasks.push(t);
-  }
-  const sorted = order.filter((k) => k !== noEpicKey);
-  if (map.has(noEpicKey)) {
-    sorted.push(noEpicKey);
-  }
-  return sorted.map((k) => map.get(k)!);
 }
