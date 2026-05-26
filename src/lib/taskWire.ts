@@ -1,4 +1,10 @@
-import type { TaskKind, TaskScope, TaskStatus, WbsTask } from "@/types/wbs";
+import type {
+  EpicRef,
+  TaskKind,
+  TaskScope,
+  TaskStatus,
+  WbsTask,
+} from "@/types/wbs";
 
 export interface WbsTaskWire {
   id: string;
@@ -11,6 +17,7 @@ export interface WbsTaskWire {
   phase: string;
   progress: number;
   scope?: TaskScope;
+  epic?: EpicRef;
 }
 
 export function toWire(task: WbsTask): WbsTaskWire {
@@ -25,6 +32,7 @@ export function toWire(task: WbsTask): WbsTaskWire {
     phase: task.phase,
     progress: task.progress,
     scope: task.scope,
+    epic: task.epic,
   };
 }
 
@@ -40,6 +48,7 @@ export function fromWire(wire: WbsTaskWire): WbsTask {
     phase: wire.phase,
     progress: wire.progress,
     scope: wire.scope,
+    epic: wire.epic,
   };
 }
 

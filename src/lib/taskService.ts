@@ -1,4 +1,4 @@
-import type { ProjectMeta, WbsTask } from "@/types/wbs";
+import type { PhaseMeta, ProjectMeta, WbsTask } from "@/types/wbs";
 import { getTasksBySlug } from "@/data/tasks";
 import { getProject } from "@/data/projects";
 import { isoDateOnlyToDate } from "./taskWire";
@@ -15,12 +15,16 @@ export type TaskSource = "notion" | "fallback";
 
 export interface FetchTasksResult {
   tasks: WbsTask[];
+  phases: PhaseMeta[];
   source: TaskSource;
   errors: NotionParseError[];
   fetchError?: string;
 }
 
-function buildHearingMilestones(project: ProjectMeta): WbsTask[] {
+function buildHearingMilestones(
+  project: ProjectMeta,
+  phaseId: string,
+): WbsTask[] {
   if (!project.hearingStartDate) {
     return [];
   }
@@ -33,7 +37,7 @@ function buildHearingMilestones(project: ProjectMeta): WbsTask[] {
       start: date,
       end: date,
       status: "done",
-      phase: "ep1",
+      phase: phaseId,
       assignee: "VJ",
       progress: 100,
     },
@@ -46,25 +50,34 @@ export async function fetchProjectTasks(
 ): Promise<FetchTasksResult> {
   const project = getProject(slug);
   if (!project) {
-    return { tasks: [], source: "fallback", errors: [] };
+    return { tasks: [], phases: [], source: "fallback", errors: [] };
   }
-  const hearingMilestones = buildHearingMilestones(project);
   if (forceLocal || !isNotionConfigured()) {
+    const localTasks = getTasksBySlug(slug);
+    const hearingMilestones = buildHearingMilestones(
+      project,
+      localTasks[0]?.phase ?? project.phases[0]?.id ?? "phase1",
+    );
     return {
-      tasks: [...getTasksBySlug(slug), ...hearingMilestones],
+      tasks: [...localTasks, ...hearingMilestones],
+      phases: project.phases,
       source: "fallback",
       errors: [],
     };
   }
   try {
-    const { tasks: notionTasks, errors } = await fetchTasksFromNotion(project);
-    // The Notion DB has no "種別" column, so all rows are kind=task. Merge in
-    // any milestones from the hardcoded fallback so they stay visible.
-    const milestones = getTasksBySlug(slug).filter(
-      (t) => t.kind === "milestone",
-    );
+    const {
+      tasks: notionTasks,
+      phases: notionPhases,
+      errors,
+    } = await fetchTasksFromNotion(project);
+
+    const phases = notionPhases.length > 0 ? notionPhases : project.phases;
+    const firstPhaseId = phases[0]?.id ?? "phase1";
+    const hearingMilestones = buildHearingMilestones(project, firstPhaseId);
     return {
-      tasks: [...notionTasks, ...milestones, ...hearingMilestones],
+      tasks: [...notionTasks, ...hearingMilestones],
+      phases,
       source: "notion",
       errors,
     };
@@ -72,8 +85,14 @@ export async function fetchProjectTasks(
     if (!(err instanceof NotionNotConfiguredError)) {
       console.error(`[taskService] Notion fetch failed for ${slug}:`, err);
     }
+    const localTasks = getTasksBySlug(slug);
+    const hearingMilestones = buildHearingMilestones(
+      project,
+      localTasks[0]?.phase ?? project.phases[0]?.id ?? "phase1",
+    );
     return {
-      tasks: [...getTasksBySlug(slug), ...hearingMilestones],
+      tasks: [...localTasks, ...hearingMilestones],
+      phases: project.phases,
       source: "fallback",
       errors: [],
       fetchError: err instanceof Error ? err.message : String(err),

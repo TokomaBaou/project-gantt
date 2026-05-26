@@ -11,9 +11,11 @@ import type { Role } from "@/lib/permissions";
 import type { PhaseMeta, ProjectMeta, WbsTask } from "@/types/wbs";
 import {
   applyOrder,
+  loadDataMode,
   loadPhaseOverrides,
   moveTaskInArray,
   reorderTaskInArray,
+  saveDataMode,
   saveOrder,
   savePhaseOverrides,
   type PhaseOverride,
@@ -49,6 +51,7 @@ interface WbsContainerProps {
 interface TasksResponse {
   source: "notion" | "fallback";
   tasks: WbsTaskWire[];
+  phases?: PhaseMeta[];
   errors?: { id: string; name: string; reason: string }[];
   fetchError?: string;
 }
@@ -63,7 +66,7 @@ export function WbsContainer({
     getTasksBySlug(project.slug),
   );
   const [source, setSource] = useState<DataSource>("loading");
-  const [dataMode, setDataMode] = useState<DataMode>("local");
+  const [dataMode, setDataMode] = useState<DataMode>("notion");
   const [zoom, setZoom] = useState<ZoomMode>("week");
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
@@ -71,19 +74,40 @@ export function WbsContainer({
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [selectedTask, setSelectedTask] = useState<WbsTask | null>(null);
   const [phases, setPhases] = useState<PhaseMeta[]>(project.phases);
+  const [fitSignal, setFitSignal] = useState(0);
+  const fitToView = useCallback(() => setFitSignal((n) => n + 1), []);
 
-  useEffect(() => {
-    let aborted = false;
-    setSource("loading");
-    const qs = dataMode === "local" ? "?source=local" : "";
-    fetch(`/api/tasks/${project.slug}${qs}`)
-      .then((r) => r.json())
-      .then((data: TasksResponse) => {
-        if (aborted) {
+  const fetchTasksOnce = useCallback(
+    async (isAborted: () => boolean): Promise<void> => {
+      setSource("loading");
+      const qs = dataMode === "local" ? "?source=local" : "";
+      try {
+        const res = await fetch(`/api/tasks/${project.slug}${qs}`, {
+          cache: "no-store",
+        });
+        const data: TasksResponse = await res.json();
+        if (isAborted()) {
           return;
         }
         setTasks(applyOrder(project.slug, data.tasks.map(fromWire)));
         setSource(data.source);
+        // Notion 由来のフェーズ階層が返ってきたらそれを採用する。
+        // ローカルフォールバック時は project.phases を維持する。
+        if (data.source === "notion" && data.phases && data.phases.length > 0) {
+          const overrides = loadPhaseOverrides(project.slug);
+          setPhases(
+            data.phases.map((p) =>
+              overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
+            ),
+          );
+        } else {
+          const overrides = loadPhaseOverrides(project.slug);
+          setPhases(
+            project.phases.map((p) =>
+              overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
+            ),
+          );
+        }
         if (data.fetchError) {
           console.warn(
             `[WbsContainer] Notion fetch error for ${project.slug}: ${data.fetchError}`,
@@ -95,34 +119,50 @@ export function WbsContainer({
             data.errors,
           );
         }
-      })
-      .catch((err: unknown) => {
-        if (aborted) {
+      } catch (err: unknown) {
+        if (isAborted()) {
           return;
         }
         console.error("[WbsContainer] failed to fetch tasks:", err);
         setSource("fallback");
-      });
+      }
+    },
+    [project.slug, project.phases, dataMode],
+  );
+
+  useEffect(() => {
+    let aborted = false;
+    void fetchTasksOnce(() => aborted);
     return () => {
       aborted = true;
     };
+  }, [fetchTasksOnce]);
+
+  const reloadTasks = useCallback((): void => {
+    void fetchTasksOnce(() => false);
+  }, [fetchTasksOnce]);
+
+  // dataMode のハイドレーション: localStorage に保存済みの選択があれば復元する。
+  // 初回マウント時のみ実行し、以降の dataMode 変更ループに巻き込まれないようにする。
+  useEffect(() => {
+    const saved = loadDataMode(project.slug);
+    if (saved && saved !== dataMode) {
+      setDataMode(saved);
+    }
+    // dataMode は依存に含めない: 復元は project.slug 変更時のみで十分。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.slug]);
+
+  // dataMode 変更時に localStorage へ即時保存（プロジェクトごと）。
+  useEffect(() => {
+    saveDataMode(project.slug, dataMode);
   }, [project.slug, dataMode]);
 
   useEffect(() => {
     setTasks((prev) => applyOrder(project.slug, prev));
   }, [project.slug]);
 
-  useEffect(() => {
-    const overrides = loadPhaseOverrides(project.slug);
-    if (Object.keys(overrides).length === 0) {
-      return;
-    }
-    setPhases(
-      project.phases.map((p) =>
-        overrides[p.id] ? { ...p, ...overrides[p.id] } : p,
-      ),
-    );
-  }, [project.slug, project.phases]);
+  // phases の上書き反映は fetchTasksOnce 内で行うため、ここでは不要。
 
   const assignees = useMemo(() => {
     const set = new Set<string>();
@@ -360,6 +400,7 @@ export function WbsContainer({
             source={source}
             onChange={setDataMode}
           />
+          <ReloadButton onClick={reloadTasks} loading={source === "loading"} />
           <div className="ml-auto flex items-center gap-3">
             {canEdit && (
               <SaveIndicator
@@ -377,6 +418,7 @@ export function WbsContainer({
       <Toolbar
         zoom={zoom}
         onZoomChange={setZoom}
+        onFitToView={fitToView}
         phases={phases}
         phaseFilter={phaseFilter}
         onPhaseFilterChange={setPhaseFilter}
@@ -401,6 +443,7 @@ export function WbsContainer({
           phases={phases}
           assignees={assignees}
           zoom={zoom}
+          fitSignal={fitSignal}
           readOnly={!canEdit}
           onTaskClick={setSelectedTask}
           onDateChange={handleDateChange}
@@ -473,6 +516,45 @@ function DataSourceToggle({
         </span>
       )}
     </div>
+  );
+}
+
+function ReloadButton({
+  onClick,
+  loading,
+}: {
+  onClick: () => void;
+  loading: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      title="WBS データを再取得（Notion 側の最新更新を取り込む）"
+      aria-label="WBS データを再読み込み"
+      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E5EA] bg-white text-[#1C1C1E] transition ${
+        loading
+          ? "cursor-wait opacity-60"
+          : "hover:bg-[#F2F2F7] active:bg-[#E5E5EA]"
+      }`}
+    >
+      <svg
+        aria-hidden
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={loading ? "animate-spin" : undefined}
+      >
+        <path d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89" />
+        <path d="M13.5 2.5v3h-3" />
+      </svg>
+    </button>
   );
 }
 

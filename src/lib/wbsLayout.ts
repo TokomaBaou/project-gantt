@@ -8,7 +8,10 @@ import type { WbsTask } from "@/types/wbs";
 
 const ORDER_KEY_PREFIX = "wbs:order:";
 const PHASES_KEY_PREFIX = "wbs:phases:";
+const DATA_MODE_KEY_PREFIX = "wbs:data-mode:";
 const SAVE_DEBOUNCE_MS = 600;
+
+export type PersistedDataMode = "local" | "notion";
 
 export interface PhaseOverride {
   label?: string;
@@ -182,4 +185,32 @@ export function savePhaseOverrides(
   overrides: Record<string, PhaseOverride>,
 ): void {
   debouncedWrite(PHASES_KEY_PREFIX + slug, overrides);
+}
+
+/**
+ * 案件ごとの WBS データソース選択（ローカル / Notion）を取得する。
+ * 未保存・SSR 中・不正値の場合は null を返す。
+ */
+export function loadDataMode(slug: string): PersistedDataMode | null {
+  if (!isBrowser()) {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(DATA_MODE_KEY_PREFIX + slug);
+    return raw === "local" || raw === "notion" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 案件ごとの WBS データソース選択を保存する（即時書き込み）。 */
+export function saveDataMode(slug: string, mode: PersistedDataMode): void {
+  if (!isBrowser()) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(DATA_MODE_KEY_PREFIX + slug, mode);
+  } catch {
+    // localStorage 容量超過などは無視
+  }
 }

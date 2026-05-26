@@ -24,6 +24,7 @@ const NOTION_PROPS = {
   progress: "進捗率",
   project: "プロジェクト",
   scope: "スコープ",
+  parent: "親アイテム",
 } as const;
 
 const STATUS_BY_LABEL: Record<string, TaskStatus> = {
@@ -124,7 +125,58 @@ export interface NotionParseError {
 
 export interface FetchNotionResult {
   tasks: WbsTask[];
+  phases: PhaseMeta[];
   errors: NotionParseError[];
+}
+
+interface ClassifiedPages {
+  /** トップレベル（親なし、または親が結果セット外）のページ＝フェーズ */
+  phaseIds: string[];
+  /** ページID → 直上の親ID（親が結果セット内に存在する場合のみ） */
+  parentIdMap: Map<string, string | null>;
+  /** ページID → ルート（フェーズ）のID */
+  rootIdByPage: Map<string, string>;
+  /** ページID → 子ページが1つ以上いるか（true ならエピック扱い） */
+  hasChildren: Set<string>;
+}
+
+function classifyPages(pages: PageObjectResponse[]): ClassifiedPages {
+  const pageIds = new Set(pages.map((p) => p.id));
+  const parentIdMap = new Map<string, string | null>();
+  for (const page of pages) {
+    const parents = readRelation(page, NOTION_PROPS.parent);
+    const parentInSet = parents.find((id) => pageIds.has(id)) ?? null;
+    parentIdMap.set(page.id, parentInSet);
+  }
+
+  const hasChildren = new Set<string>();
+  parentIdMap.forEach((parentId) => {
+    if (parentId) {
+      hasChildren.add(parentId);
+    }
+  });
+
+  const rootIdByPage = new Map<string, string>();
+  for (const page of pages) {
+    let current = page.id;
+    const seen = new Set<string>();
+    while (true) {
+      if (seen.has(current)) {
+        break;
+      }
+      seen.add(current);
+      const parent = parentIdMap.get(current) ?? null;
+      if (!parent) {
+        break;
+      }
+      current = parent;
+    }
+    rootIdByPage.set(page.id, current);
+  }
+
+  const phaseIds = pages.filter((p) => !parentIdMap.get(p.id)).map((p) => p.id);
+
+  return { phaseIds, parentIdMap, rootIdByPage, hasChildren };
 }
 
 export async function fetchTasksFromNotion(
@@ -149,10 +201,39 @@ export async function fetchTasksFromNotion(
     cursor = response.next_cursor ?? undefined;
   } while (cursor);
 
+  const classification = classifyPages(results);
+  const pageById = new Map(results.map((p) => [p.id, p]));
+
+  const phases: PhaseMeta[] = classification.phaseIds
+    .map((id) => pageById.get(id))
+    .filter((p): p is PageObjectResponse => Boolean(p))
+    .map((page) => {
+      const range = readDateRange(page, NOTION_PROPS.schedule);
+      const goalParts: string[] = [];
+      if (range) {
+        goalParts.push(
+          `${formatPhaseDate(range.start)} – ${formatPhaseDate(range.end)}`,
+        );
+      }
+      return {
+        id: page.id,
+        label: readTitle(page, NOTION_PROPS.title) || "(無題)",
+        goal: goalParts.join(" / "),
+      };
+    });
+
   const tasks: WbsTask[] = [];
   const errors: NotionParseError[] = [];
 
   for (const page of results) {
+    // フェーズ（トップレベル）とエピック（子を持つ中間層）は
+    // タスク一覧には含めず、ガントの行としては描画しない。
+    if (classification.phaseIds.includes(page.id)) {
+      continue;
+    }
+    if (classification.hasChildren.has(page.id)) {
+      continue;
+    }
     let safeName = "";
     try {
       safeName = readTitle(page, NOTION_PROPS.title);
@@ -160,7 +241,20 @@ export async function fetchTasksFromNotion(
       // ignore — falls through to error reporting below
     }
     try {
-      tasks.push(mapPageToTask(page, project.phases));
+      const phaseId =
+        classification.rootIdByPage.get(page.id) ?? phases[0]?.id ?? "phase1";
+      const parentId = classification.parentIdMap.get(page.id) ?? null;
+      let epic: { id: string; name: string } | undefined;
+      if (parentId && parentId !== phaseId) {
+        const parentPage = pageById.get(parentId);
+        if (parentPage) {
+          epic = {
+            id: parentPage.id,
+            name: readTitle(parentPage, NOTION_PROPS.title) || "(無題)",
+          };
+        }
+      }
+      tasks.push(mapPageToTask(page, phaseId, epic));
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.warn(
@@ -174,7 +268,13 @@ export async function fetchTasksFromNotion(
     }
   }
 
-  return { tasks, errors };
+  return { tasks, phases, errors };
+}
+
+function formatPhaseDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
 }
 
 export interface NotionUpdate {
@@ -224,7 +324,11 @@ export async function updateTaskInNotion(
   await notion.pages.update({ page_id: pageId, properties });
 }
 
-function mapPageToTask(page: PageObjectResponse, phases: PhaseMeta[]): WbsTask {
+function mapPageToTask(
+  page: PageObjectResponse,
+  phaseId: string,
+  epic: { id: string; name: string } | undefined,
+): WbsTask {
   const name = readTitle(page, NOTION_PROPS.title) || "(無題)";
 
   const range =
@@ -263,10 +367,19 @@ function mapPageToTask(page: PageObjectResponse, phases: PhaseMeta[]): WbsTask {
     end: range.end,
     status,
     assignee,
-    phase: phases[0]?.id ?? "phase1",
+    phase: phaseId,
     progress,
     scope,
+    epic,
   };
+}
+
+function readRelation(page: PageObjectResponse, prop: string): string[] {
+  const p = page.properties[prop];
+  if (!p || p.type !== "relation") {
+    return [];
+  }
+  return p.relation.map((r) => r.id);
 }
 
 function defaultDateRange(): { start: Date; end: Date } {

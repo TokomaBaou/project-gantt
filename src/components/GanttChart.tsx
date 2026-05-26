@@ -24,6 +24,11 @@ interface GanttChartProps {
   phases: PhaseMeta[];
   assignees: string[];
   zoom: ZoomMode;
+  /**
+   * `fitSignal` を変更（インクリメント）すると、ガントの列幅を
+   * 表示可能領域に合わせて自動調整する。
+   */
+  fitSignal?: number;
   readOnly: boolean;
   onTaskClick: (task: WbsTask) => void;
   onDateChange: (id: string, start: Date, end: Date) => void;
@@ -63,6 +68,7 @@ export function GanttChart({
   tasks,
   phases,
   zoom,
+  fitSignal,
   readOnly,
   onTaskClick,
   onDateChange,
@@ -77,6 +83,9 @@ export function GanttChart({
   } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [ganttHeight, setGanttHeight] = useState(0);
+  const [columnWidthOverride, setColumnWidthOverride] = useState<number | null>(
+    null,
+  );
 
   // ドラッグ&ドロップ並び替えの状態。連続発火する dragover で再レンダリングを
   // 起こさないよう state ではなく ref で保持し、インジケーターは DOM 直接操作で描画する。
@@ -139,7 +148,9 @@ export function GanttChart({
     const result: Task[] = [];
 
     for (const phase of phases) {
-      const children = tasks.filter((t) => t.phase === phase.id);
+      const children = groupTasksByEpic(
+        tasks.filter((t) => t.phase === phase.id),
+      );
       if (children.length === 0) {
         continue;
       }
@@ -222,8 +233,40 @@ export function GanttChart({
     return result;
   }, [tasks, phases, readOnly, collapsed]);
 
-  const viewMode = zoom === "week" ? ViewMode.Week : ViewMode.Month;
-  const columnWidth = zoom === "week" ? 90 : 240;
+  const viewMode = resolveViewMode(zoom);
+  const defaultColumnWidth = defaultColumnWidthFor(zoom);
+  const columnWidth = columnWidthOverride ?? defaultColumnWidth;
+
+  // ズーム変更時は手動オーバーライドをリセットする。
+  useEffect(() => {
+    setColumnWidthOverride(null);
+  }, [zoom]);
+
+  // 全体表示要求: 表示可能なガント領域とタスク全体の日付レンジから列幅を逆算する。
+  useEffect(() => {
+    if (fitSignal === undefined) {
+      return;
+    }
+    const el = wrapperRef.current;
+    if (!el) {
+      return;
+    }
+    const available = Math.max(
+      el.clientWidth - parseInt(LIST_WIDTH, 10) - 24,
+      200,
+    );
+    const range = computeDateRange(tasks);
+    if (!range) {
+      return;
+    }
+    const columns = countColumns(range.start, range.end, zoom);
+    if (columns <= 0) {
+      return;
+    }
+    const next = Math.max(Math.floor(available / columns), 24);
+    setColumnWidthOverride(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitSignal]);
 
   const TaskListHeaderRow: FC<{
     headerHeight: number;
@@ -380,10 +423,19 @@ export function GanttChart({
         const nextRow = rows[rowIndex + 1];
         const isFirstInPhase = !prevRow || prevRow.type === "project";
         const isLastInPhase = !nextRow || nextRow.type === "project";
+        const prevWbs = prevRow ? wbsById.get(prevRow.id) : undefined;
+        const isFirstInEpic =
+          !!wbs.epic &&
+          (isFirstInPhase || !prevWbs || prevWbs.epic?.id !== wbs.epic.id);
         return (
           <div
             key={row.id}
-            style={{ height: rowHeight }}
+            style={{
+              height: rowHeight,
+              ...(isFirstInEpic && !isFirstInPhase
+                ? { borderTop: "1px dashed #C7C7CC" }
+                : {}),
+            }}
             draggable={!readOnly}
             className={`flex cursor-pointer items-center border-b border-[#E5E5EA] pl-4 pr-4 transition ${
               selected ? "bg-[#E5F1FF]" : "hover:bg-[#F2F2F7]"
@@ -483,6 +535,17 @@ export function GanttChart({
                   className="inline-block h-2.5 w-2.5 shrink-0 rotate-45"
                   style={{ backgroundColor: MILESTONE_COLOR }}
                 />
+              )}
+              {wbs.epic && (
+                <span
+                  title={`エピック: ${wbs.epic.name}`}
+                  className={`shrink-0 truncate rounded-md border border-[#E5E5EA] bg-[#F2F2F7] px-1.5 py-0.5 text-[10px] font-medium text-[#5856D6] ${
+                    isFirstInEpic ? "ring-1 ring-[#5856D6]/30" : ""
+                  }`}
+                  style={{ maxWidth: 110 }}
+                >
+                  {wbs.epic.name}
+                </span>
               )}
               <span className="truncate">{wbs.name}</span>
             </div>
@@ -693,4 +756,88 @@ function ensureRange(start: Date, end: Date): Date {
     return adjusted;
   }
   return end;
+}
+
+/**
+ * フェーズ内のタスクをエピック（直上の親）でグルーピングして並べ替える。
+ * エピックの出現順は最初のタスクの登場順を維持し、エピック内のタスク順も
+ * 元の配列順を保つ（applyOrder で復元された並びを壊さない）。
+ * エピック未指定のタスクは末尾にまとめる。
+ */
+function resolveViewMode(zoom: ZoomMode): ViewMode {
+  switch (zoom) {
+    case "day":
+      return ViewMode.Day;
+    case "week":
+      return ViewMode.Week;
+    case "month":
+      return ViewMode.Month;
+    case "year":
+      return ViewMode.Year;
+  }
+}
+
+function defaultColumnWidthFor(zoom: ZoomMode): number {
+  switch (zoom) {
+    case "day":
+      return 32;
+    case "week":
+      return 90;
+    case "month":
+      return 200;
+    case "year":
+      return 180;
+  }
+}
+
+function computeDateRange(tasks: WbsTask[]): { start: Date; end: Date } | null {
+  if (tasks.length === 0) {
+    return null;
+  }
+  const startMs = Math.min(...tasks.map((t) => t.start.getTime()));
+  const endMs = Math.max(...tasks.map((t) => t.end.getTime()));
+  return { start: new Date(startMs), end: new Date(endMs) };
+}
+
+function countColumns(start: Date, end: Date, zoom: ZoomMode): number {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const totalDays = Math.max(
+    1,
+    Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY) + 1,
+  );
+  switch (zoom) {
+    case "day":
+      return totalDays;
+    case "week":
+      return Math.ceil(totalDays / 7);
+    case "month":
+      return Math.max(
+        1,
+        (end.getFullYear() - start.getFullYear()) * 12 +
+          (end.getMonth() - start.getMonth()) +
+          1,
+      );
+    case "year":
+      return Math.max(1, end.getFullYear() - start.getFullYear() + 1);
+  }
+}
+
+function groupTasksByEpic(tasks: WbsTask[]): WbsTask[] {
+  const order: string[] = [];
+  const bucket = new Map<string, WbsTask[]>();
+  const noEpicKey = "__no_epic__";
+  for (const t of tasks) {
+    const key = t.epic?.id ?? noEpicKey;
+    if (!bucket.has(key)) {
+      bucket.set(key, []);
+      order.push(key);
+    }
+    bucket.get(key)!.push(t);
+  }
+  // エピックなしのバケットは末尾に。
+  const withoutNoEpic = order.filter((k) => k !== noEpicKey);
+  if (bucket.has(noEpicKey)) {
+    withoutNoEpic.push(noEpicKey);
+  }
+  return withoutNoEpic.flatMap((k) => bucket.get(k) ?? []);
 }

@@ -18,7 +18,7 @@ export async function GET(request: Request, { params }: RouteContext) {
   }
   const url = new URL(request.url);
   const forceSource = url.searchParams.get("source"); // "local" | null
-  const { tasks, source, errors, fetchError } = await fetchProjectTasks(
+  const { tasks, phases, source, errors, fetchError } = await fetchProjectTasks(
     params.slug,
     forceSource === "local",
   );
@@ -26,6 +26,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     {
       source,
       tasks: tasks.map(toWire),
+      phases,
       errors,
       ...(fetchError ? { fetchError } : {}),
     },

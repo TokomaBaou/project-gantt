@@ -2,7 +2,7 @@
 
 import { STATUS_LABELS, type PhaseMeta, type TaskStatus } from "@/types/wbs";
 
-export type ZoomMode = "week" | "month";
+export type ZoomMode = "day" | "week" | "month" | "year";
 export type PhaseFilter = "all" | string;
 export type AssigneeFilter = string;
 export type StatusFilter = "all" | "notDone" | TaskStatus;
@@ -11,6 +11,7 @@ export type ScopeFilter = "all" | "A" | "B" | "C";
 interface ToolbarProps {
   zoom: ZoomMode;
   onZoomChange: (zoom: ZoomMode) => void;
+  onFitToView?: () => void;
   phases: PhaseMeta[];
   phaseFilter: PhaseFilter;
   onPhaseFilterChange: (value: PhaseFilter) => void;
@@ -24,6 +25,13 @@ interface ToolbarProps {
   showScopeFilter?: boolean;
   readOnly?: boolean;
 }
+
+const ZOOM_OPTIONS: { value: ZoomMode; label: string }[] = [
+  { value: "day", label: "日" },
+  { value: "week", label: "週" },
+  { value: "month", label: "月" },
+  { value: "year", label: "年" },
+];
 
 const STATUS_KEYS: TaskStatus[] = [
   "done",
@@ -43,6 +51,7 @@ const SCOPE_OPTIONS: { value: ScopeFilter; label: string; hint: string }[] = [
 export function Toolbar({
   zoom,
   onZoomChange,
+  onFitToView,
   phases,
   phaseFilter,
   onPhaseFilterChange,
@@ -63,29 +72,31 @@ export function Toolbar({
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-[#8E8E93]">ズーム</span>
         <div className="inline-flex overflow-hidden rounded-lg bg-[#F2F2F7] p-0.5">
-          <button
-            type="button"
-            onClick={() => onZoomChange("week")}
-            className={`rounded-md px-3 py-1 text-sm font-medium transition ${
-              zoom === "week"
-                ? "bg-white text-[#007AFF] shadow-sm"
-                : "text-[#8E8E93] hover:text-[#1C1C1E]"
-            }`}
-          >
-            週
-          </button>
-          <button
-            type="button"
-            onClick={() => onZoomChange("month")}
-            className={`rounded-md px-3 py-1 text-sm font-medium transition ${
-              zoom === "month"
-                ? "bg-white text-[#007AFF] shadow-sm"
-                : "text-[#8E8E93] hover:text-[#1C1C1E]"
-            }`}
-          >
-            月
-          </button>
+          {ZOOM_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onZoomChange(opt.value)}
+              className={`rounded-md px-2.5 py-1 text-sm font-medium transition ${
+                zoom === opt.value
+                  ? "bg-white text-[#007AFF] shadow-sm"
+                  : "text-[#8E8E93] hover:text-[#1C1C1E]"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
+        {onFitToView && (
+          <button
+            type="button"
+            onClick={onFitToView}
+            title="ガントチャート全体を画面幅に収めて表示"
+            className="rounded-lg border border-[#E5E5EA] bg-white px-2.5 py-1 text-sm font-medium text-[#1C1C1E] transition hover:bg-[#F2F2F7] active:bg-[#E5E5EA]"
+          >
+            全体表示
+          </button>
+        )}
       </div>
 
       <FilterSelect

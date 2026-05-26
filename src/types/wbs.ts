@@ -15,6 +15,16 @@ export interface PhaseMeta {
   goal?: string;
 }
 
+/**
+ * 中間階層（フェーズ→エピック→タスク）。
+ * Notion の親アイテム relation から導出した直上エピックの id/name を保持し、
+ * タスクリスト表示時のグループラベルとして用いる。
+ */
+export interface EpicRef {
+  id: string;
+  name: string;
+}
+
 export interface WbsTask {
   id: string;
   name: string;
@@ -26,6 +36,7 @@ export interface WbsTask {
   phase: string;
   progress: number;
   scope?: TaskScope;
+  epic?: EpicRef;
 }
 
 export interface ProjectMeta {
