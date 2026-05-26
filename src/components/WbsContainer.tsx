@@ -67,7 +67,7 @@ export function WbsContainer({
   );
   const [source, setSource] = useState<DataSource>("loading");
   const [dataMode, setDataMode] = useState<DataMode>("notion");
-  const [zoom, setZoom] = useState<ZoomMode>("week");
+  const [zoom, setZoom] = useState<ZoomMode>("month");
   const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");

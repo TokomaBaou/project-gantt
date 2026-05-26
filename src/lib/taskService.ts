@@ -75,8 +75,13 @@ export async function fetchProjectTasks(
     const phases = notionPhases.length > 0 ? notionPhases : project.phases;
     const firstPhaseId = phases[0]?.id ?? "phase1";
     const hearingMilestones = buildHearingMilestones(project, firstPhaseId);
+    // Notion DB に「種別」列が無いため milestone は返らない。
+    // 上部マイルストーン行に表示するため、ローカル定義の milestone を合流させる。
+    const localMilestones = getTasksBySlug(slug).filter(
+      (t) => t.kind === "milestone",
+    );
     return {
-      tasks: [...notionTasks, ...hearingMilestones],
+      tasks: [...notionTasks, ...localMilestones, ...hearingMilestones],
       phases,
       source: "notion",
       errors,

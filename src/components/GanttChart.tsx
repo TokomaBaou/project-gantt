@@ -10,7 +10,6 @@ import {
 } from "react";
 import { Gantt, type Task, ViewMode } from "gantt-task-react";
 import "gantt-task-react/dist/index.css";
-import { STATUS_COLORS } from "@/lib/statusColors";
 import {
   STATUS_LABELS,
   type PhaseMeta,
@@ -45,7 +44,26 @@ interface GanttChartProps {
   ) => void;
 }
 
-const PHASE_ACCENT_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE"];
+/**
+ * フェーズごとのバー配色。phases 配列の index で対応付ける（青→緑→オレンジ→グレー）。
+ * 4 を超える場合はラップする。
+ */
+interface PhaseBarColor {
+  main: string;
+  taskBg: string;
+  epicBg: string;
+  phaseBg: string;
+}
+
+const PHASE_BAR_COLORS: PhaseBarColor[] = [
+  { main: "#007AFF", taskBg: "#D6E4FF", epicBg: "#B8DAFF", phaseBg: "#E5F1FF" },
+  { main: "#34C759", taskBg: "#D8F2E0", epicBg: "#B8E4C5", phaseBg: "#E8F9ED" },
+  { main: "#FF9500", taskBg: "#FFE4C2", epicBg: "#FFD297", phaseBg: "#FFF3E0" },
+  { main: "#8E8E93", taskBg: "#E5E5EA", epicBg: "#D1D1D6", phaseBg: "#F2F2F7" },
+];
+
+/** ガント上部のマイルストーン専用トラック（合成フェーズ）の ID。 */
+const MILESTONE_TRACK_ID = "__milestone_track__";
 
 const MILESTONE_COLOR = "#AF52DE";
 
@@ -147,83 +165,150 @@ export function GanttChart({
   const ganttTasks = useMemo<Task[]>(() => {
     const result: Task[] = [];
 
-    for (const phase of phases) {
-      const children = groupTasksByEpic(
-        tasks.filter((t) => t.phase === phase.id),
+    // 1) 上部マイルストーントラック（合成フェーズ）。全 milestone タスクを集約。
+    const milestones = tasks.filter((t) => t.kind === "milestone");
+    if (milestones.length > 0) {
+      const trackStart = new Date(
+        Math.min(...milestones.map((t) => t.start.getTime())),
       );
-      if (children.length === 0) {
+      const trackEnd = new Date(
+        Math.max(...milestones.map((t) => t.end.getTime())),
+      );
+      result.push({
+        id: MILESTONE_TRACK_ID,
+        name: "マイルストーン",
+        start: trackStart,
+        end: ensureRange(trackStart, trackEnd),
+        progress: 0,
+        type: "project",
+        hideChildren: false,
+        isDisabled: true,
+        // バーを描画しない（行のみ確保し、子のダイヤを横一列に並べる）。
+        styles: {
+          backgroundColor: "rgba(0,0,0,0)",
+          backgroundSelectedColor: "rgba(0,0,0,0)",
+          progressColor: "rgba(0,0,0,0)",
+          progressSelectedColor: "rgba(0,0,0,0)",
+        },
+      });
+      for (const m of milestones) {
+        result.push({
+          id: m.id,
+          name: m.name,
+          start: m.start,
+          end: m.start,
+          progress: 100,
+          type: "milestone",
+          project: MILESTONE_TRACK_ID,
+          isDisabled: readOnly,
+          styles: {
+            backgroundColor: MILESTONE_COLOR,
+            backgroundSelectedColor: MILESTONE_COLOR,
+            progressColor: MILESTONE_COLOR,
+            progressSelectedColor: MILESTONE_COLOR,
+          },
+        });
+      }
+    }
+
+    // 2) 各フェーズの行＋エピック行＋タスク行。milestone は上部トラックに集約済みなので除外。
+    for (let pi = 0; pi < phases.length; pi++) {
+      const phase = phases[pi];
+      const colorSet = PHASE_BAR_COLORS[pi % PHASE_BAR_COLORS.length];
+
+      const phaseTasks = tasks.filter(
+        (t) => t.phase === phase.id && t.kind !== "milestone",
+      );
+      if (phaseTasks.length === 0) {
         continue;
       }
 
-      const minStart = new Date(
-        Math.min(...children.map((t) => t.start.getTime())),
+      const phaseStart = new Date(
+        Math.min(...phaseTasks.map((t) => t.start.getTime())),
       );
-      const maxEnd = new Date(
-        Math.max(...children.map((t) => t.end.getTime())),
+      const phaseEnd = new Date(
+        Math.max(...phaseTasks.map((t) => t.end.getTime())),
       );
-      const taskOnly = children.filter((t) => t.kind === "task");
-      const avgProgress =
-        taskOnly.length === 0
-          ? 0
-          : Math.round(
-              taskOnly.reduce((sum, t) => sum + t.progress, 0) /
-                taskOnly.length,
-            );
-
-      const isCollapsed = collapsed.has(phase.id);
+      const phaseProgress = Math.round(
+        phaseTasks.reduce((s, t) => s + t.progress, 0) / phaseTasks.length,
+      );
+      const phaseCollapsed = collapsed.has(phase.id);
 
       result.push({
         id: phase.id,
         name: phase.label,
-        start: minStart,
-        end: ensureRange(minStart, maxEnd),
-        progress: avgProgress,
+        start: phaseStart,
+        end: ensureRange(phaseStart, phaseEnd),
+        progress: phaseProgress,
         type: "project",
-        hideChildren: isCollapsed,
+        hideChildren: phaseCollapsed,
         isDisabled: readOnly,
         styles: {
-          backgroundColor: "#F2F2F7",
-          backgroundSelectedColor: "#E5E5EA",
-          progressColor: "#C7C7CC",
-          progressSelectedColor: "#AEAEB2",
+          backgroundColor: colorSet.phaseBg,
+          backgroundSelectedColor: colorSet.phaseBg,
+          progressColor: colorSet.main,
+          progressSelectedColor: colorSet.main,
         },
       });
 
-      for (const t of children) {
-        const color = STATUS_COLORS[t.status];
-        const label = formatBarLabel(t);
-        if (t.kind === "milestone") {
+      if (phaseCollapsed) {
+        continue;
+      }
+
+      const epicGroups = groupByEpic(phaseTasks);
+
+      for (const group of epicGroups) {
+        if (group.id) {
+          const epicStart = new Date(
+            Math.min(...group.tasks.map((t) => t.start.getTime())),
+          );
+          const epicEnd = new Date(
+            Math.max(...group.tasks.map((t) => t.end.getTime())),
+          );
+          const epicProgress = Math.round(
+            group.tasks.reduce((s, t) => s + t.progress, 0) /
+              group.tasks.length,
+          );
+          const epicCollapsed = collapsed.has(group.id);
+
           result.push({
-            id: t.id,
-            name: label,
-            start: t.start,
-            end: t.start,
-            progress: t.progress,
-            type: "milestone",
+            id: group.id,
+            name: group.name,
+            start: epicStart,
+            end: ensureRange(epicStart, epicEnd),
+            progress: epicProgress,
+            type: "project",
             project: phase.id,
+            hideChildren: epicCollapsed,
             isDisabled: readOnly,
             styles: {
-              backgroundColor: color.background,
-              backgroundSelectedColor: color.progress,
-              progressColor: color.progress,
-              progressSelectedColor: color.progress,
+              backgroundColor: colorSet.epicBg,
+              backgroundSelectedColor: colorSet.epicBg,
+              progressColor: colorSet.main,
+              progressSelectedColor: colorSet.main,
             },
           });
-        } else {
+
+          if (epicCollapsed) {
+            continue;
+          }
+        }
+
+        for (const t of group.tasks) {
           result.push({
             id: t.id,
-            name: label,
+            name: formatBarLabel(t),
             start: t.start,
             end: ensureRange(t.start, t.end),
             progress: t.progress,
             type: "task",
-            project: phase.id,
+            project: group.id ?? phase.id,
             isDisabled: readOnly,
             styles: {
-              backgroundColor: color.background,
-              backgroundSelectedColor: color.background,
-              progressColor: color.progress,
-              progressSelectedColor: color.progress,
+              backgroundColor: colorSet.taskBg,
+              backgroundSelectedColor: colorSet.taskBg,
+              progressColor: colorSet.main,
+              progressSelectedColor: colorSet.main,
             },
           });
         }
@@ -232,6 +317,9 @@ export function GanttChart({
 
     return result;
   }, [tasks, phases, readOnly, collapsed]);
+
+  // フェーズ／エピック判定用のセット。
+  const phaseIdSet = useMemo(() => new Set(phases.map((p) => p.id)), [phases]);
 
   const viewMode = resolveViewMode(zoom);
   const defaultColumnWidth = defaultColumnWidthFor(zoom);
@@ -303,11 +391,37 @@ export function GanttChart({
   }) => (
     <div style={{ width: rowWidth }} className="bg-white">
       {rows.map((row, rowIndex) => {
-        if (row.type === "project") {
+        // 1) 合成マイルストーントラックの行
+        if (row.id === MILESTONE_TRACK_ID) {
+          return (
+            <div
+              key={row.id}
+              style={{
+                height: rowHeight,
+                backgroundColor: "#F2F2F7",
+                borderLeftColor: MILESTONE_COLOR,
+                borderLeftWidth: 4,
+              }}
+              className="flex items-center border-b border-l-4 border-[#E5E5EA] pl-3 pr-4"
+            >
+              <span
+                aria-hidden
+                className="mr-2 inline-block h-2.5 w-2.5 rotate-45"
+                style={{ backgroundColor: MILESTONE_COLOR }}
+              />
+              <span className="truncate text-[12px] font-semibold uppercase tracking-wide text-[#5856D6]">
+                マイルストーン
+              </span>
+            </div>
+          );
+        }
+
+        // 2) フェーズ行（type=project かつ phases に存在）
+        if (row.type === "project" && phaseIdSet.has(row.id)) {
           const meta = phases.find((p) => p.id === row.id);
-          const accent =
-            PHASE_ACCENT_COLORS[
-              (phaseIndex.get(row.id) ?? 0) % PHASE_ACCENT_COLORS.length
+          const colorSet =
+            PHASE_BAR_COLORS[
+              (phaseIndex.get(row.id) ?? 0) % PHASE_BAR_COLORS.length
             ];
           const isCollapsed = collapsed.has(row.id);
           return (
@@ -315,17 +429,17 @@ export function GanttChart({
               key={row.id}
               style={{
                 height: rowHeight,
-                borderLeftColor: accent,
+                borderLeftColor: colorSet.main,
                 borderLeftWidth: 4,
-                backgroundColor: "#F2F2F7",
+                backgroundColor: colorSet.phaseBg,
               }}
-              className="flex cursor-pointer items-center border-b border-l-4 border-[#E5E5EA] pl-3 pr-4 transition hover:bg-[#E5E5EA]"
+              className="flex cursor-pointer items-center border-b border-l-4 border-[#E5E5EA] pl-3 pr-4 transition hover:brightness-95"
               onClick={() => {
                 toggleCollapse(row.id);
               }}
             >
               <span
-                className="mr-2 inline-block text-[11px] text-[#8E8E93] transition-transform"
+                className="mr-2 inline-block text-[11px] text-[#1C1C1E] transition-transform"
                 style={{
                   transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
                 }}
@@ -338,7 +452,7 @@ export function GanttChart({
                 editingPhase.field === "label" ? (
                   <InlineEdit
                     value={meta?.label ?? row.name}
-                    ariaLabel="エピック名"
+                    ariaLabel="フェーズ名"
                     className="w-full rounded border border-[#007AFF] bg-white px-1 py-0.5 text-[13px] font-semibold text-[#1C1C1E] focus:outline-none"
                     onCommit={(value) => {
                       const trimmed = value.trim();
@@ -354,7 +468,7 @@ export function GanttChart({
                     className={`truncate text-[13px] font-semibold text-[#1C1C1E] ${
                       readOnly
                         ? ""
-                        : "cursor-text rounded px-0.5 hover:bg-[#E5E5EA]"
+                        : "cursor-text rounded px-0.5 hover:bg-white/60"
                     }`}
                     onClick={(e) => {
                       if (readOnly) {
@@ -372,7 +486,7 @@ export function GanttChart({
                 editingPhase.field === "goal" ? (
                   <InlineEdit
                     value={meta?.goal ?? ""}
-                    ariaLabel="エピックの目標"
+                    ariaLabel="フェーズの目標"
                     placeholder="目標を入力"
                     className="mt-0.5 w-full rounded border border-[#007AFF] bg-white px-1 py-0.5 text-[11px] text-[#8E8E93] focus:outline-none"
                     onCommit={(value) => {
@@ -386,7 +500,7 @@ export function GanttChart({
                     className={`truncate text-[11px] text-[#8E8E93] ${
                       readOnly
                         ? ""
-                        : "cursor-text rounded px-0.5 hover:bg-[#E5E5EA]"
+                        : "cursor-text rounded px-0.5 hover:bg-white/60"
                     }`}
                     onClick={(e) => {
                       if (readOnly) {
@@ -414,30 +528,80 @@ export function GanttChart({
           );
         }
 
+        // 3) エピック行（type=project かつ phases に無い＝中間階層）
+        if (row.type === "project") {
+          const parentPhaseId = row.project;
+          const colorSet =
+            parentPhaseId && phaseIndex.has(parentPhaseId)
+              ? PHASE_BAR_COLORS[
+                  (phaseIndex.get(parentPhaseId) ?? 0) % PHASE_BAR_COLORS.length
+                ]
+              : PHASE_BAR_COLORS[0];
+          const isCollapsed = collapsed.has(row.id);
+          return (
+            <div
+              key={row.id}
+              style={{
+                height: rowHeight,
+                borderLeftColor: colorSet.main,
+                borderLeftWidth: 2,
+                backgroundColor: "#FAFAFC",
+              }}
+              className="flex cursor-pointer items-center border-b border-l-2 border-[#E5E5EA] pl-8 pr-4 transition hover:bg-[#F2F2F7]"
+              onClick={() => {
+                toggleCollapse(row.id);
+              }}
+            >
+              <span
+                className="mr-2 inline-block text-[10px] text-[#8E8E93] transition-transform"
+                style={{
+                  transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                }}
+              >
+                ▼
+              </span>
+              <span className="truncate text-[12px] font-semibold text-[#1C1C1E]">
+                {row.name}
+              </span>
+            </div>
+          );
+        }
+
+        // 4) タスク／マイルストーンの葉行
         const wbs = wbsById.get(row.id);
         if (!wbs) {
           return null;
         }
+        const isMilestoneRow = row.project === MILESTONE_TRACK_ID;
+        const indentPx = isMilestoneRow ? 32 : wbs.epic ? 56 : 32;
         const selected = selectedTaskId === row.id;
-        const prevRow = rows[rowIndex - 1];
-        const nextRow = rows[rowIndex + 1];
-        const isFirstInPhase = !prevRow || prevRow.type === "project";
-        const isLastInPhase = !nextRow || nextRow.type === "project";
-        const prevWbs = prevRow ? wbsById.get(prevRow.id) : undefined;
-        const isFirstInEpic =
-          !!wbs.epic &&
-          (isFirstInPhase || !prevWbs || prevWbs.epic?.id !== wbs.epic.id);
+
+        // 同一フェーズ内の前後行を確認し、↑↓ボタンの表示可否を決める。
+        // マイルストーントラックは並び替え不可。
+        const sameGroupNeighbors = (other: Task | undefined) => {
+          if (!other) {
+            return false;
+          }
+          if (other.type === "project") {
+            return false;
+          }
+          if (other.project !== row.project) {
+            return false;
+          }
+          return true;
+        };
+        const isFirstInGroup = !sameGroupNeighbors(rows[rowIndex - 1]);
+        const isLastInGroup = !sameGroupNeighbors(rows[rowIndex + 1]);
+        const draggable = !readOnly && !isMilestoneRow;
         return (
           <div
             key={row.id}
             style={{
               height: rowHeight,
-              ...(isFirstInEpic && !isFirstInPhase
-                ? { borderTop: "1px dashed #C7C7CC" }
-                : {}),
+              paddingLeft: indentPx,
             }}
-            draggable={!readOnly}
-            className={`flex cursor-pointer items-center border-b border-[#E5E5EA] pl-4 pr-4 transition ${
+            draggable={draggable}
+            className={`flex cursor-pointer items-center border-b border-[#E5E5EA] pr-4 transition ${
               selected ? "bg-[#E5F1FF]" : "hover:bg-[#F2F2F7]"
             }`}
             onClick={() => {
@@ -445,6 +609,9 @@ export function GanttChart({
               onTaskClick(wbs);
             }}
             onDragStart={(e) => {
+              if (!draggable) {
+                return;
+              }
               draggedIdRef.current = row.id;
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData("text/plain", row.id);
@@ -498,9 +665,9 @@ export function GanttChart({
               draggedIdRef.current = null;
             }}
           >
-            {!readOnly && (
+            {!readOnly && !isMilestoneRow && (
               <div className="mr-1.5 flex w-[18px] shrink-0 flex-col items-center justify-center gap-px">
-                {!isFirstInPhase && (
+                {!isFirstInGroup && (
                   <button
                     type="button"
                     aria-label="上に移動"
@@ -513,7 +680,7 @@ export function GanttChart({
                     ↑
                   </button>
                 )}
-                {!isLastInPhase && (
+                {!isLastInGroup && (
                   <button
                     type="button"
                     aria-label="下に移動"
@@ -536,17 +703,6 @@ export function GanttChart({
                   style={{ backgroundColor: MILESTONE_COLOR }}
                 />
               )}
-              {wbs.epic && (
-                <span
-                  title={`エピック: ${wbs.epic.name}`}
-                  className={`shrink-0 truncate rounded-md border border-[#E5E5EA] bg-[#F2F2F7] px-1.5 py-0.5 text-[10px] font-medium text-[#5856D6] ${
-                    isFirstInEpic ? "ring-1 ring-[#5856D6]/30" : ""
-                  }`}
-                  style={{ maxWidth: 110 }}
-                >
-                  {wbs.epic.name}
-                </span>
-              )}
               <span className="truncate">{wbs.name}</span>
             </div>
             <div className="flex w-24 justify-center">
@@ -566,13 +722,21 @@ export function GanttChart({
     fontSize: string;
     fontFamily: string;
   }> = ({ task }) => {
+    if (task.id === MILESTONE_TRACK_ID) {
+      return null;
+    }
     if (task.type === "project") {
       const meta = phases.find((p) => p.id === task.id);
+      const label = meta?.label ?? task.name;
+      const isEpic = !meta;
       return (
         <div className="rounded-xl border border-[#E5E5EA] bg-white p-3 text-xs shadow-lg">
-          <div className="font-semibold text-[#1C1C1E]">
-            {meta?.label ?? task.name}
-          </div>
+          <div className="font-semibold text-[#1C1C1E]">{label}</div>
+          {isEpic && (
+            <div className="mt-1 text-[10px] uppercase tracking-wide text-[#5856D6]">
+              エピック
+            </div>
+          )}
           {meta?.goal && <div className="mt-1 text-[#8E8E93]">{meta.goal}</div>}
           <div className="mt-1 text-[#8E8E93]">
             {formatShortDate(task.start)} – {formatShortDate(task.end)}
@@ -822,22 +986,35 @@ function countColumns(start: Date, end: Date, zoom: ZoomMode): number {
   }
 }
 
-function groupTasksByEpic(tasks: WbsTask[]): WbsTask[] {
+interface EpicGroup {
+  id: string | null;
+  name: string;
+  tasks: WbsTask[];
+}
+
+/**
+ * フェーズ内のタスクをエピック（直上の親）でグルーピングする。
+ * エピックの出現順はタスクの登場順を維持し、エピック未指定のタスクは末尾に集約。
+ */
+function groupByEpic(tasks: WbsTask[]): EpicGroup[] {
   const order: string[] = [];
-  const bucket = new Map<string, WbsTask[]>();
+  const map = new Map<string, EpicGroup>();
   const noEpicKey = "__no_epic__";
   for (const t of tasks) {
     const key = t.epic?.id ?? noEpicKey;
-    if (!bucket.has(key)) {
-      bucket.set(key, []);
+    if (!map.has(key)) {
+      map.set(key, {
+        id: t.epic?.id ?? null,
+        name: t.epic?.name ?? "",
+        tasks: [],
+      });
       order.push(key);
     }
-    bucket.get(key)!.push(t);
+    map.get(key)!.tasks.push(t);
   }
-  // エピックなしのバケットは末尾に。
-  const withoutNoEpic = order.filter((k) => k !== noEpicKey);
-  if (bucket.has(noEpicKey)) {
-    withoutNoEpic.push(noEpicKey);
+  const sorted = order.filter((k) => k !== noEpicKey);
+  if (map.has(noEpicKey)) {
+    sorted.push(noEpicKey);
   }
-  return withoutNoEpic.flatMap((k) => bucket.get(k) ?? []);
+  return sorted.map((k) => map.get(k)!);
 }
