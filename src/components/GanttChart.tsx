@@ -87,6 +87,12 @@ const LEGEND_PHASE_ENTRIES: { label: string }[] = [
 
 const MILESTONE_COLOR = "#7C3AED";
 
+const WAITING_COLOR_MAIN = "#f59e0b";
+const WAITING_COLOR_LIGHT = "#FEF3C7";
+const WAITING_COLOR_TEXT = "#92400E";
+const WAITING_HATCH_BG =
+  "repeating-linear-gradient(45deg, rgba(146, 64, 14, 0.32) 0, rgba(146, 64, 14, 0.32) 4px, transparent 4px, transparent 8px)";
+
 const DAY_PX_BY_ZOOM: Record<ZoomMode, number> = {
   week: 18,
   month: 6,
@@ -780,6 +786,23 @@ export function GanttChart({
               <span className="ml-auto flex items-center gap-1.5 whitespace-nowrap">
                 <span
                   aria-hidden
+                  className="inline-block h-3 w-5 rounded-sm"
+                  style={{
+                    backgroundColor: WAITING_COLOR_LIGHT,
+                    backgroundImage: WAITING_HATCH_BG,
+                    border: `1px solid ${WAITING_COLOR_MAIN}`,
+                  }}
+                />
+                <span
+                  className="text-[11px] font-medium"
+                  style={{ color: WAITING_COLOR_TEXT }}
+                >
+                  EA待ち
+                </span>
+              </span>
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
+                <span
+                  aria-hidden
                   className="inline-block h-2.5 w-2.5 rotate-45"
                   style={{ backgroundColor: MILESTONE_COLOR }}
                 />
@@ -1228,6 +1251,19 @@ const LeftCell: FC<LeftCellProps> = ({
         >
           {t.name}
         </span>
+        {t.status === "waiting" && (
+          <span
+            title="先方（EA）ボール待ち"
+            className="shrink-0 rounded px-1 py-px text-[9px] font-bold leading-none"
+            style={{
+              backgroundColor: WAITING_COLOR_LIGHT,
+              color: WAITING_COLOR_TEXT,
+              border: `1px solid ${WAITING_COLOR_MAIN}`,
+            }}
+          >
+            EA待ち
+          </span>
+        )}
       </div>
       <div className="flex w-20 justify-center">
         <span
@@ -1437,14 +1473,24 @@ function TaskBar({
   const barHeight = 20;
   const top = (height - barHeight) / 2;
   const isDone = task.status === "done";
+  const isWaiting = task.status === "waiting";
   const progressWidth = Math.min(Math.max(task.progress, 0), 100);
   const showAssigneeLabel = !!task.assignee && width >= 60;
+  const baseBorderColor = isWaiting ? WAITING_COLOR_MAIN : colorSet.main;
   const highlightBorder = isThisWeek
     ? `2px solid #D97706`
-    : `1px solid ${colorSet.main}`;
+    : `1px solid ${baseBorderColor}`;
   const boxShadow = isThisWeek
     ? "0 0 0 2px rgba(255, 214, 10, 0.45)"
     : undefined;
+  const bgColor = isWaiting
+    ? WAITING_COLOR_LIGHT
+    : isDone
+      ? colorSet.soft
+      : colorSet.light;
+  const fillColor = isWaiting ? WAITING_COLOR_MAIN : colorSet.main;
+  const fillOpacity = isWaiting ? 0.55 : 0.85;
+  const labelColor = isWaiting ? WAITING_COLOR_TEXT : colorSet.text;
   return (
     <button
       type="button"
@@ -1452,14 +1498,14 @@ function TaskBar({
         e.stopPropagation();
         onTaskClick(task);
       }}
-      title={`${task.name}${task.assignee ? ` / ${task.assignee}` : ""} (${formatShortDate(task.start)} – ${formatShortDate(task.end)})`}
+      title={`${task.name}${isWaiting ? "（EA待ち）" : ""}${task.assignee ? ` / ${task.assignee}` : ""} (${formatShortDate(task.start)} – ${formatShortDate(task.end)})`}
       className="absolute overflow-hidden rounded transition hover:brightness-95"
       style={{
         left,
         top,
         width,
         height: barHeight,
-        backgroundColor: isDone ? colorSet.soft : colorSet.light,
+        backgroundColor: bgColor,
         border: highlightBorder,
         opacity: isDone ? 0.7 : 1,
         boxShadow,
@@ -1469,15 +1515,22 @@ function TaskBar({
         className="h-full"
         style={{
           width: `${progressWidth}%`,
-          backgroundColor: colorSet.main,
-          opacity: 0.85,
+          backgroundColor: fillColor,
+          opacity: fillOpacity,
         }}
       />
+      {isWaiting && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: WAITING_HATCH_BG }}
+        />
+      )}
       {showAssigneeLabel && (
         <span
           aria-hidden
           className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[9px] font-semibold leading-none"
-          style={{ color: colorSet.text }}
+          style={{ color: labelColor }}
         >
           {task.assignee}
         </span>
