@@ -215,7 +215,7 @@ const SEED: SeedTask[] = [
     start: [6, 23],
     end: [7, 11],
     phase: "ep2",
-    scope: "A",
+    scope: "B",
   },
   {
     id: "ea-line-02",
@@ -225,7 +225,7 @@ const SEED: SeedTask[] = [
     start: [6, 23],
     end: [7, 4],
     phase: "ep2",
-    scope: "A",
+    scope: "B",
   },
   {
     id: "ea-line-03",
@@ -235,7 +235,7 @@ const SEED: SeedTask[] = [
     start: [7, 14],
     end: [7, 25],
     phase: "ep2",
-    scope: "A",
+    scope: "B",
   },
   {
     id: "ea-line-04",
@@ -245,7 +245,7 @@ const SEED: SeedTask[] = [
     start: [7, 21],
     end: [7, 31],
     phase: "ep2",
-    scope: "A",
+    scope: "B",
   },
 
   // ─── EP-2: マイルストーン ───
@@ -258,7 +258,7 @@ const SEED: SeedTask[] = [
     start: [7, 31],
     end: [7, 31],
     phase: "ep2",
-    scope: "A",
+    scope: "B",
   },
 
   // ═══════════════════════════════════════════════════════════════════
@@ -272,7 +272,7 @@ const SEED: SeedTask[] = [
     start: [8, 4],
     end: [8, 22],
     phase: "ep3",
-    scope: "B",
+    scope: "C",
   },
   {
     id: "ea-ops-02",
@@ -302,7 +302,7 @@ const SEED: SeedTask[] = [
     start: [8, 25],
     end: [9, 30],
     phase: "ep3",
-    scope: "B",
+    scope: "C",
   },
 
   // ═══════════════════════════════════════════════════════════════════

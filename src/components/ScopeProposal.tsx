@@ -24,61 +24,69 @@ const PATTERNS: Pattern[] = [
   {
     id: "a",
     label: "Pattern A",
-    title: "2ヶ月で受講後botを本番投入",
-    description: "受講後botの基本機能に集中。最優先で早期リリース",
+    title: "2ヶ月契約（〜6月末）｜Web版α・β版リリース",
+    description: "先方がWeb版で触ってFBできる状態まで",
     accent: "#5DCAA5",
     badgeBg: "#E1F5EE",
     badgeText: "#085041",
     dotColor: "#1D9E75",
     scope: [
-      "受講後botの基本機能（FAQ・用語辞典・動画取り込み・回答ドラフト・予測提案）",
-      "UTAGE会話履歴からの教師データ収集",
+      "Web版 α版・β版リリース",
+      "FAQ 45件 + 用語辞典212語 + 会員サイトコンテンツ取込み",
+      "動画トランスクリプト（主要コース分）",
+      "予測提案機能 + 会員サイトリンク表示",
     ],
-    duration: "約2ヶ月",
-    barWidths: [{ color: "#1D9E75", width: "55%" }],
-    barLabel: "5月 → 7月上旬",
+    duration: "2ヶ月（〜6月末）",
+    barWidths: [{ color: "#1D9E75", width: "40%" }],
+    barLabel: "5月 → 6月末",
   },
   {
     id: "b",
     label: "Pattern B",
-    title: "会員サイト連携・運用基盤まで含める場合",
-    description: "会員サイトコンテンツ対応とログ基盤。品質と運用性のバランス",
+    title: "3ヶ月契約（〜7月末）｜LINE版リリース",
+    description: "LINEで会員が実際に使える状態まで",
     accent: "#85B7EB",
     badgeBg: "#E6F1FB",
     badgeText: "#0C447C",
     dotColor: "#378ADD",
     inherited: ["Pattern A の全機能"],
-    scope: ["会員サイトコンテンツの取り込み", "ログ基盤の構築・受け入れテスト"],
-    duration: "2ヶ月 + 2〜3週間",
-    barWidths: [
-      { color: "#1D9E75", width: "55%" },
-      { color: "#378ADD", width: "15%" },
+    scope: [
+      "LINE組込み（中間サーバー方式）",
+      "ログ基盤構築",
+      "文字数・絵文字最適化",
+      "受け入れテスト",
     ],
-    barLabel: "5月 → 7月下旬",
+    duration: "3ヶ月（〜7月末）",
+    barWidths: [
+      { color: "#1D9E75", width: "40%" },
+      { color: "#378ADD", width: "20%" },
+    ],
+    barLabel: "5月 → 7月末",
     recommended: true,
   },
   {
     id: "c",
     label: "Pattern C",
-    title: "受講前bot・ファインチューニングまで含める場合",
-    description: "後回しの受講前botと由加先生の人格再現まで含めた完全自動化",
+    title: "5ヶ月契約（〜9月末）｜運用・精度改善＋受講前bot",
+    description: "ゆかさんの口調再現、全コンテンツ対応の最高品質",
     accent: "#ED93B1",
     badgeBg: "#FBEAF0",
     badgeText: "#72243E",
     dotColor: "#D4537E",
-    inherited: ["Pattern A の全機能", "Pattern B の会員サイト連携・運用基盤"],
+    inherited: ["Pattern A の全機能", "Pattern B の LINE版リリース"],
     scope: [
-      "受講前bot（入会前FAQ・LINE組み込み）",
-      "教師データ100件以上の蓄積・GPTファインチューニング",
-      "メソッド回答精度のチューニング",
+      "メソッド回答精度チューニング",
+      "GPTファインチューニング",
+      "LLM使い分け最適化",
+      "受講前bot（入会前FAQ・判別方式）",
     ],
-    duration: "3ヶ月以上",
+    duration: "5ヶ月（〜9月末）",
     barWidths: [
-      { color: "#1D9E75", width: "55%" },
-      { color: "#378ADD", width: "15%" },
-      { color: "#D4537E", width: "18%" },
+      { color: "#1D9E75", width: "40%" },
+      { color: "#378ADD", width: "20%" },
+      { color: "#D4537E", width: "40%" },
     ],
-    barLabel: "5月 → 8月上旬",
+    barLabel: "5月 → 9月末",
   },
 ];
 
@@ -98,7 +106,7 @@ export function ScopeProposal() {
         >
           ▼
         </span>
-        スコープ提案（Pattern A / B / C）
+        スコープ提案（2ヶ月 / 3ヶ月 / 5ヶ月契約）
       </button>
 
       {open && (
