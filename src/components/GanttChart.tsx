@@ -208,7 +208,7 @@ interface MilestonePlacement {
 }
 
 /**
- * マイルストーン名から末尾の括弧書き（「（先方タッチポイント）」等）を落として
+ * マイルストーン名から末尾の括弧書き（「（リリースポイント）」等）を落として
  * ガント上で読みやすい短い表記にする。
  */
 function shortMilestoneName(name: string): string {

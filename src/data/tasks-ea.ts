@@ -178,10 +178,10 @@ const SEED: SeedTask[] = [
     scope: "A",
   },
 
-  // ─── EP-1: マイルストーン（先方タッチポイント） ───
+  // ─── EP-1: マイルストーン（リリースポイント） ───
   {
     id: "ea-m-web-alpha",
-    name: "Web版 α版リリース（先方タッチポイント）",
+    name: "Web版 α版リリース（リリースポイント）",
     kind: "milestone",
     status: "planned",
     assignee: "VJ",
@@ -251,7 +251,7 @@ const SEED: SeedTask[] = [
   // ─── EP-2: マイルストーン ───
   {
     id: "ea-m-line-release",
-    name: "LINE版リリース（先方タッチポイント）",
+    name: "LINE版リリース（リリースポイント）",
     kind: "milestone",
     status: "planned",
     assignee: "VJ",
