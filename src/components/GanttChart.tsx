@@ -91,8 +91,8 @@ const MILESTONE_COLOR = "#7C3AED";
 // タスクバー右端に小さなバッジを表示する。完了タスク・マイルストーンには付けない。
 const RELEASE_DATES = {
   alpha: "2026-06-22",
-  beta: "2026-07-06",
-  line: "2026-07-31",
+  webRelease: "2026-06-30",
+  line: "2026-08-15",
 } as const;
 
 function parseISODate(s: string): Date {
@@ -101,7 +101,7 @@ function parseISODate(s: string): Date {
 }
 
 const RELEASE_ALPHA_DATE = parseISODate(RELEASE_DATES.alpha);
-const RELEASE_BETA_DATE = parseISODate(RELEASE_DATES.beta);
+const RELEASE_WEB_DATE = parseISODate(RELEASE_DATES.webRelease);
 const RELEASE_LINE_DATE = parseISODate(RELEASE_DATES.line);
 
 interface ReleaseBadgeInfo {
@@ -121,14 +121,18 @@ function getReleaseBadge(task: WbsTask): ReleaseBadgeInfo | null {
   if (endMs <= RELEASE_ALPHA_DATE.getTime()) {
     return { label: "α", color: "#7C3AED", title: "α版リリース（6/22）対象" };
   }
-  if (endMs <= RELEASE_BETA_DATE.getTime()) {
-    return { label: "β", color: "#2563EB", title: "β版リリース（7/6）対象" };
+  if (endMs <= RELEASE_WEB_DATE.getTime()) {
+    return {
+      label: "Web",
+      color: "#2563EB",
+      title: "Web版本番リリース（6/30）対象",
+    };
   }
   if (endMs <= RELEASE_LINE_DATE.getTime()) {
     return {
       label: "LINE",
       color: "#059669",
-      title: "LINE版リリース（7/31）対象",
+      title: "LINE版リリース（8/15）対象",
     };
   }
   return null;
