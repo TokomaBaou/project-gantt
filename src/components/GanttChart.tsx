@@ -87,6 +87,53 @@ const LEGEND_PHASE_ENTRIES: { label: string }[] = [
 
 const MILESTONE_COLOR = "#7C3AED";
 
+// リリース日とバッジ色の対応。task.end <= 各日付ならそのリリースに含まれると判定し、
+// タスクバー右端に小さなバッジを表示する。完了タスク・マイルストーンには付けない。
+const RELEASE_DATES = {
+  alpha: "2026-06-20",
+  beta: "2026-07-04",
+  line: "2026-07-31",
+} as const;
+
+function parseISODate(s: string): Date {
+  const [y, m, d] = s.split("-").map((n) => parseInt(n, 10));
+  return new Date(y, m - 1, d);
+}
+
+const RELEASE_ALPHA_DATE = parseISODate(RELEASE_DATES.alpha);
+const RELEASE_BETA_DATE = parseISODate(RELEASE_DATES.beta);
+const RELEASE_LINE_DATE = parseISODate(RELEASE_DATES.line);
+
+interface ReleaseBadgeInfo {
+  label: string;
+  color: string;
+  title: string;
+}
+
+function getReleaseBadge(task: WbsTask): ReleaseBadgeInfo | null {
+  if (task.status === "done") {
+    return null;
+  }
+  if (task.kind === "milestone") {
+    return null;
+  }
+  const endMs = startOfDay(task.end).getTime();
+  if (endMs <= RELEASE_ALPHA_DATE.getTime()) {
+    return { label: "α", color: "#7C3AED", title: "α版リリース（6/20）対象" };
+  }
+  if (endMs <= RELEASE_BETA_DATE.getTime()) {
+    return { label: "β", color: "#2563EB", title: "β版リリース（7/4）対象" };
+  }
+  if (endMs <= RELEASE_LINE_DATE.getTime()) {
+    return {
+      label: "LINE",
+      color: "#059669",
+      title: "LINE版リリース（7/31）対象",
+    };
+  }
+  return null;
+}
+
 const WAITING_COLOR_MAIN = "#f59e0b";
 const WAITING_COLOR_LIGHT = "#FEF3C7";
 const WAITING_COLOR_TEXT = "#92400E";
@@ -1390,19 +1437,68 @@ const RightCell: FC<RightCellProps> = ({
       )}
 
       {row.kind === "task" && (
-        <TaskBar
-          task={row.task}
-          colorSet={row.colorSet}
-          xOf={xOf}
-          dayPx={dayPx}
-          height={height}
-          onTaskClick={onTaskClick}
-          isThisWeek={row.isThisWeek}
-        />
+        <>
+          <TaskBar
+            task={row.task}
+            colorSet={row.colorSet}
+            xOf={xOf}
+            dayPx={dayPx}
+            height={height}
+            onTaskClick={onTaskClick}
+            isThisWeek={row.isThisWeek}
+          />
+          <ReleaseBadge
+            task={row.task}
+            xOf={xOf}
+            dayPx={dayPx}
+            height={height}
+          />
+        </>
       )}
     </div>
   );
 };
+
+function ReleaseBadge({
+  task,
+  xOf,
+  dayPx,
+  height,
+}: {
+  task: WbsTask;
+  xOf: (d: Date) => number;
+  dayPx: number;
+  height: number;
+}) {
+  const badge = getReleaseBadge(task);
+  if (!badge) {
+    return null;
+  }
+  const barLeft = xOf(task.start);
+  const barWidth = Math.max((diffDays(task.start, task.end) + 1) * dayPx, 6);
+  const barRight = barLeft + barWidth;
+  const isMulti = badge.label.length > 1;
+  const badgeWidth = isMulti ? 24 : 12;
+  return (
+    <span
+      aria-label={badge.title}
+      title={badge.title}
+      className="pointer-events-none absolute z-10 inline-flex items-center justify-center font-bold leading-none text-white shadow-sm"
+      style={{
+        // バーの右端にバッジ中央を載せる (半分内側・半分外側)
+        left: barRight - badgeWidth / 2,
+        top: (height - 12) / 2,
+        width: badgeWidth,
+        height: 12,
+        borderRadius: 999,
+        fontSize: 7,
+        backgroundColor: badge.color,
+      }}
+    >
+      {badge.label}
+    </span>
+  );
+}
 
 function SpanBar({
   start,
