@@ -119,10 +119,10 @@ function getReleaseBadge(task: WbsTask): ReleaseBadgeInfo | null {
   }
   const endMs = startOfDay(task.end).getTime();
   if (endMs <= RELEASE_ALPHA_DATE.getTime()) {
-    return { label: "α", color: "#7C3AED", title: "α版リリース（6/20）対象" };
+    return { label: "α", color: "#7C3AED", title: "α版リリース（6/22）対象" };
   }
   if (endMs <= RELEASE_BETA_DATE.getTime()) {
-    return { label: "β", color: "#2563EB", title: "β版リリース（7/4）対象" };
+    return { label: "β", color: "#2563EB", title: "β版リリース（7/6）対象" };
   }
   if (endMs <= RELEASE_LINE_DATE.getTime()) {
     return {

@@ -4,7 +4,7 @@ const EA_PHASES: PhaseMeta[] = [
   {
     id: "ep1",
     label: "受講後bot: Web版 開発・リリース",
-    goal: "最優先。α版: 6月上旬 / β版: 6月中旬〜下旬",
+    goal: "最優先。α版: 6/22（基本応答・FBは随時反映）/ β版: 7/6（機能追加）",
   },
   {
     id: "ep2",

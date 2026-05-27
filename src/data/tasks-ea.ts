@@ -192,7 +192,7 @@ const SEED: SeedTask[] = [
   },
   {
     id: "ea-m-web-beta",
-    name: "Web版 β版リリース（FB反映）",
+    name: "Web版 β版リリース（機能追加）",
     kind: "milestone",
     status: "planned",
     assignee: "VJ",
