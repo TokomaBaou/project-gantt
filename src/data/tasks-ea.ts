@@ -328,6 +328,19 @@ const SEED: SeedTask[] = [
     phase: "ep4",
     scope: "C",
   },
+
+  // ─── EP-4: マイルストーン ───
+  {
+    id: "ea-m-pre-release",
+    name: "受講前botリリース（リリースポイント）",
+    kind: "milestone",
+    status: "planned",
+    assignee: "VJ",
+    start: [8, 22],
+    end: [8, 22],
+    phase: "ep4",
+    scope: "C",
+  },
 ];
 
 export const EA_TASKS: WbsTask[] = SEED.map((s) => ({
