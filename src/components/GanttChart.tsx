@@ -459,7 +459,20 @@ export function GanttChart({
   onReorderPhases,
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // 初期状態は全フェーズ/エピックを折りたたんで表示する。ユーザーが
+  // クリックで個別に展開する運用に変更（過去はデフォルト展開だった）。
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const phase of phases) {
+      set.add(phase.id);
+    }
+    for (const task of tasks) {
+      if (task.epic?.id) {
+        set.add(task.epic.id);
+      }
+    }
+    return set;
+  });
   const [editingPhase, setEditingPhase] = useState<{
     id: string;
     field: "label" | "goal";
