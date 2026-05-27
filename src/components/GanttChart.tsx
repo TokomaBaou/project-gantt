@@ -46,7 +46,7 @@ interface GanttChartProps {
   ) => void;
 }
 
-const LIST_WIDTH = 380;
+const LIST_WIDTH = 460;
 const MONTH_HEADER_H = 30;
 const WEEK_HEADER_H = 26;
 const LEGEND_H = 36;
@@ -1274,14 +1274,14 @@ const LeftCell: FC<LeftCellProps> = ({
   const isThisWeek = row.isThisWeek;
   return (
     <div
-      className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 bg-white pr-3 transition hover:bg-gray-50"
+      className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 bg-white py-1.5 pr-3 transition hover:bg-gray-50"
       style={{
-        height,
+        minHeight: height,
         paddingLeft: indentPx,
       }}
       onClick={() => onTaskClick(t)}
     >
-      <div className="flex flex-1 items-center gap-1.5 overflow-hidden text-[12px] text-gray-800">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] text-gray-800">
         {isThisWeek && !isDone && (
           <span
             aria-label="今週アクティブ"
@@ -1297,7 +1297,9 @@ const LeftCell: FC<LeftCellProps> = ({
           </span>
         )}
         <span
-          className={`truncate ${isDone ? "text-gray-400 line-through" : ""}`}
+          className={`whitespace-normal break-words ${
+            isDone ? "text-gray-400 line-through" : ""
+          }`}
         >
           {t.name}
         </span>
@@ -1353,7 +1355,7 @@ const RightCell: FC<RightCellProps> = ({
     <div
       className="relative border-b border-gray-200"
       style={{
-        height,
+        minHeight: height,
         width: totalWidth,
         background: row.kind === "milestone-track" ? "#F5F3FF" : "white",
       }}
