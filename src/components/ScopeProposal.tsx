@@ -23,8 +23,8 @@ interface Pattern {
 const PATTERNS: Pattern[] = [
   {
     id: "a",
-    label: "Pattern A",
-    title: "2ヶ月契約（〜6月末）｜Web版α・β版リリース",
+    label: "Phase 1",
+    title: "（〜6月末）｜Web版α・β版リリース",
     description: "先方がWeb版で触ってFBできる状態まで",
     accent: "#5DCAA5",
     badgeBg: "#E1F5EE",
@@ -42,14 +42,14 @@ const PATTERNS: Pattern[] = [
   },
   {
     id: "b",
-    label: "Pattern B",
-    title: "3ヶ月契約（〜7月末）｜LINE版リリース",
+    label: "Phase 2",
+    title: "（〜7月末）｜LINE版リリース",
     description: "LINEで会員が実際に使える状態まで",
     accent: "#85B7EB",
     badgeBg: "#E6F1FB",
     badgeText: "#0C447C",
     dotColor: "#378ADD",
-    inherited: ["Pattern A の全機能"],
+    inherited: ["Phase 1 の全機能"],
     scope: [
       "LINE組込み（中間サーバー方式）",
       "ログ基盤構築",
@@ -66,14 +66,14 @@ const PATTERNS: Pattern[] = [
   },
   {
     id: "c",
-    label: "Pattern C",
-    title: "5ヶ月契約（〜9月末）｜運用・精度改善＋受講前bot",
+    label: "Phase 3",
+    title: "（〜9月末）｜運用・精度改善＋受講前bot",
     description: "ゆかさんの口調再現、全コンテンツ対応の最高品質",
     accent: "#ED93B1",
     badgeBg: "#FBEAF0",
     badgeText: "#72243E",
     dotColor: "#D4537E",
-    inherited: ["Pattern A の全機能", "Pattern B の LINE版リリース"],
+    inherited: ["Phase 1 の全機能", "Phase 2 の LINE版リリース"],
     scope: [
       "メソッド回答精度チューニング",
       "GPTファインチューニング",
@@ -106,7 +106,7 @@ export function ScopeProposal() {
         >
           ▼
         </span>
-        スコープ提案（2ヶ月 / 3ヶ月 / 5ヶ月契約）
+        スコープ提案（Phase 1 / 2 / 3）
       </button>
 
       {open && (
