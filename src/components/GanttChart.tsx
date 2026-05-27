@@ -459,20 +459,10 @@ export function GanttChart({
   onReorderPhases,
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  // 初期状態は全フェーズ/エピックを折りたたんで表示する。ユーザーが
-  // クリックで個別に展開する運用に変更（過去はデフォルト展開だった）。
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    const set = new Set<string>();
-    for (const phase of phases) {
-      set.add(phase.id);
-    }
-    for (const task of tasks) {
-      if (task.epic?.id) {
-        set.add(task.epic.id);
-      }
-    }
-    return set;
-  });
+  // 「展開されているもの」のSetで保持する（反転）。初期値は空Set=全て閉じ。
+  // 元は collapsed Set だったが、初期マウント時の phases/tasks がフェッチ前で
+  // 空になるため全展開状態に戻ってしまうバグがあり、意味を反転した。
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [editingPhase, setEditingPhase] = useState<{
     id: string;
     field: "label" | "goal";
@@ -495,7 +485,7 @@ export function GanttChart({
   }, []);
 
   const toggle = useCallback((id: string) => {
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -610,7 +600,7 @@ export function GanttChart({
           progress: groupProgress,
           taskCount: list.length,
         });
-        if (collapsed.has(groupId)) {
+        if (!expanded.has(groupId)) {
           return;
         }
         for (const task of list) {
@@ -647,7 +637,7 @@ export function GanttChart({
         span: phaseRange,
         progress: phaseProgress,
       });
-      if (collapsed.has(phase.id)) {
+      if (!expanded.has(phase.id)) {
         continue;
       }
       const epics = groupByEpic(phaseTasks);
@@ -666,7 +656,7 @@ export function GanttChart({
             span: epicRange,
             progress: epicProgress,
           });
-          if (collapsed.has(epic.id)) {
+          if (!expanded.has(epic.id)) {
             continue;
           }
           for (const task of epic.tasks) {
@@ -692,7 +682,7 @@ export function GanttChart({
       }
     }
     return result;
-  }, [tasks, phases, collapsed, xOf, dayPx, byAssignee, weekStart, weekEnd]);
+  }, [tasks, phases, expanded, xOf, dayPx, byAssignee, weekStart, weekEnd]);
 
   const today = startOfDay(new Date());
   const todayInRange =
@@ -883,7 +873,7 @@ export function GanttChart({
                 <LeftCell
                   row={row}
                   height={height}
-                  collapsed={collapsed}
+                  expanded={expanded}
                   onToggle={toggle}
                   onTaskClick={onTaskClick}
                   onPhaseEdit={onPhaseEdit}
@@ -993,7 +983,7 @@ export function GanttChart({
 interface LeftCellProps {
   row: Row;
   height: number;
-  collapsed: Set<string>;
+  expanded: Set<string>;
   onToggle: (id: string) => void;
   onTaskClick: (task: WbsTask) => void;
   onPhaseEdit: (id: string, patch: { label?: string; goal?: string }) => void;
@@ -1016,7 +1006,7 @@ interface LeftCellProps {
 const LeftCell: FC<LeftCellProps> = ({
   row,
   height,
-  collapsed,
+  expanded,
   onToggle,
   onTaskClick,
   onPhaseEdit,
@@ -1051,7 +1041,7 @@ const LeftCell: FC<LeftCellProps> = ({
   }
 
   if (row.kind === "phase") {
-    const isCollapsed = collapsed.has(row.phase.id);
+    const isCollapsed = !expanded.has(row.phase.id);
     const dndEnabled = !readOnly && !!onReorderPhases;
     const phaseId = row.phase.id;
     return (
@@ -1204,7 +1194,7 @@ const LeftCell: FC<LeftCellProps> = ({
   }
 
   if (row.kind === "epic") {
-    const isCollapsed = collapsed.has(row.id);
+    const isCollapsed = !expanded.has(row.id);
     return (
       <div
         className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 transition hover:bg-gray-50"
@@ -1234,7 +1224,7 @@ const LeftCell: FC<LeftCellProps> = ({
   }
 
   if (row.kind === "assignee") {
-    const isCollapsed = collapsed.has(row.id);
+    const isCollapsed = !expanded.has(row.id);
     return (
       <div
         className="sticky left-0 z-10 flex cursor-pointer items-center border-b border-r border-gray-200 pr-3 transition hover:brightness-95"
