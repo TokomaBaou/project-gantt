@@ -181,15 +181,6 @@ function startOfISOWeek(d: Date): Date {
   const day = d.getDay() || 7;
   return startOfDay(addDays(d, -(day - 1)));
 }
-function isoWeekNumber(d: Date): number {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  return Math.ceil(
-    ((date.getTime() - yearStart.getTime()) / MS_PER_DAY + 1) / 7,
-  );
-}
 function formatShortDate(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
@@ -339,8 +330,8 @@ function buildWeekSegments(start: Date, end: Date, dayPx: number): WeekSeg[] {
     const days = diffDays(segStart, segEnd);
     if (days > 0) {
       segs.push({
-        key: `${cursor.getFullYear()}-${isoWeekNumber(cursor)}-${cursor.getMonth()}`,
-        label: `W${isoWeekNumber(cursor)}`,
+        key: `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`,
+        label: formatShortDate(cursor),
         offsetPx: diffDays(start, segStart) * dayPx,
         widthPx: days * dayPx,
       });
