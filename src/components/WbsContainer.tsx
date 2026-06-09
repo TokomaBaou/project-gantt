@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { STATUS_PROGRESS_DEFAULT } from "@/lib/statusColors";
 import { getTasksBySlug } from "@/data/tasks";
@@ -406,14 +405,6 @@ export function WbsContainer({
     <div className="flex h-screen flex-col bg-white">
       <header className="border-b border-[#E5E5EA] bg-white/95 px-6 py-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="text-xs font-medium text-[#007AFF] hover:opacity-80"
-            aria-label="案件一覧に戻る"
-          >
-            ← 案件一覧
-          </Link>
-          <span className="text-[#C7C7CC]">/</span>
           <h1 className="text-xl font-semibold tracking-tight text-[#1C1C1E]">
             {project.name} - WBS
           </h1>
